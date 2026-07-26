@@ -1,0 +1,78 @@
+import AppIntents
+
+/// Permite marcar la próxima serie pendiente del entrenamiento activo por
+/// voz ("Oye Siri, marca serie en GymFlow"), sin tener que tocar el
+/// teléfono con las manos ocupadas por las pesas.
+struct CompleteNextSetIntent: AppIntent {
+    static var title: LocalizedStringResource = "Marcar serie completada"
+    static var description = IntentDescription(
+        "Marca como completada la próxima serie pendiente del entrenamiento activo en GymFlow."
+    )
+    static var openAppWhenRun: Bool = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let didComplete = ActiveWorkoutSession.shared.completeNextPendingSet()
+        let english = AppLanguage.current == .english
+        if didComplete {
+            return .result(dialog: english ? "Set marked as completed." : "Serie marcada como completada.")
+        } else {
+            return .result(dialog: english ? "There's no active workout in GymFlow." : "No hay un entrenamiento activo en GymFlow.")
+        }
+    }
+}
+
+/// Cancela el entrenamiento activo por voz ("Oye Siri, cancela la rutina
+/// en GymFlow"), sin necesidad de guardar el progreso ni abrir la app.
+struct CancelWorkoutIntent: AppIntent {
+    static var title: LocalizedStringResource = "Cancelar entrenamiento"
+    static var description = IntentDescription(
+        "Cancela el entrenamiento activo en GymFlow sin guardar el progreso."
+    )
+    static var openAppWhenRun: Bool = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let didCancel = ActiveWorkoutSession.shared.cancelActiveWorkout(external: true)
+        let english = AppLanguage.current == .english
+        if didCancel {
+            return .result(dialog: english ? "Workout canceled." : "Entrenamiento cancelado.")
+        } else {
+            return .result(dialog: english ? "There's no active workout in GymFlow." : "No hay un entrenamiento activo en GymFlow.")
+        }
+    }
+}
+
+struct GymFlowShortcuts: AppShortcutsProvider {
+    static var appShortcuts: [AppShortcut] {
+        AppShortcut(
+            intent: CompleteNextSetIntent(),
+            phrases: [
+                "Marca serie en \(.applicationName)",
+                "Marca la serie en \(.applicationName)",
+                "Siguiente serie en \(.applicationName)",
+                "Completar serie en \(.applicationName)",
+                "Anota una serie en \(.applicationName)",
+                "Suma una serie en \(.applicationName)",
+                "Registra la serie en \(.applicationName)",
+                "\(.applicationName), marca serie",
+                "\(.applicationName), siguiente serie"
+            ],
+            shortTitle: "Marcar serie",
+            systemImageName: "checkmark.circle.fill"
+        )
+        AppShortcut(
+            intent: CancelWorkoutIntent(),
+            phrases: [
+                "Cancela la rutina en \(.applicationName)",
+                "Cancela el entrenamiento en \(.applicationName)",
+                "Detén el entrenamiento en \(.applicationName)",
+                "Termina la rutina en \(.applicationName)",
+                "\(.applicationName), cancela la rutina",
+                "\(.applicationName), cancela el entrenamiento"
+            ],
+            shortTitle: "Cancelar entrenamiento",
+            systemImageName: "xmark.circle.fill"
+        )
+    }
+}
