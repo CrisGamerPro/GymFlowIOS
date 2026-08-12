@@ -7,15 +7,19 @@ struct ExercisePickerView: View {
     @State private var searchText = ""
     @State private var selectedCategory = "Todos"
     
-    let categories = ["Todos", "Cardio", "Fuerza", "Core"]
-    
+    let categories = ExerciseCatalog.categories
+
     var filteredExercises: [CatalogExercise] {
         let all = ExerciseCatalog.all
         let filteredByCategory = selectedCategory == "Todos" ? all : all.filter { $0.category == selectedCategory }
         if searchText.isEmpty {
             return filteredByCategory
         } else {
-            return filteredByCategory.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+            return filteredByCategory.filter { ex in
+                ex.name.localizedCaseInsensitiveContains(searchText) ||
+                ExerciseCatalog.displayName(id: ex.id, storedName: ex.name).localizedCaseInsensitiveContains(searchText) ||
+                ex.category.localizedCaseInsensitiveContains(searchText)
+            }
         }
     }
     

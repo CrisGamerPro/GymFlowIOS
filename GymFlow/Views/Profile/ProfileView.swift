@@ -14,8 +14,15 @@ struct ProfileView: View {
     @State private var showEditName = false
     @State private var nameInput = ""
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
-    @State private var showExportAlert = false
     @State private var showSiriTipAlert = false
+
+    // Export
+    @State private var exportFileURL: URL? = nil
+    @State private var showShareSheet = false
+    @State private var exportError: String? = nil
+    @State private var showExportErrorAlert = false
+
+    // Import
     @State private var showImporter = false
     @State private var importResultMessage = ""
     @State private var showImportResultAlert = false
@@ -40,6 +47,7 @@ struct ProfileView: View {
                         }
 
                         VStack(spacing: 0) {
+                            // Idioma
                             Menu {
                                 ForEach(AppLanguage.allCases) { language in
                                     Button(action: { selectLanguage(language) }) {
@@ -60,12 +68,14 @@ struct ProfileView: View {
                             .accessibilityElement(children: .combine)
                             Divider().background(Color.white.opacity(0.08))
 
+                            // Notificaciones
                             SettingsRowView(icon: "bell.fill", tint: Theme.amber, title: "Notificaciones") {
                                 notificationStatusView
                             }
                             .accessibilityElement(children: .combine)
                             Divider().background(Color.white.opacity(0.08))
 
+                            // Siri
                             Button(action: { showSiriTipAlert = true }) {
                                 SettingsRowView(icon: "waveform", tint: Theme.pink, title: "Atajos de Siri") {
                                     Image(systemName: "chevron.right")
@@ -78,15 +88,26 @@ struct ProfileView: View {
                             .accessibilityAddTraits(.isButton)
                             Divider().background(Color.white.opacity(0.08))
 
-                            SettingsRowView(icon: "chart.bar.fill", tint: Theme.blue, title: "Estadísticas") {
-                                Text("\(logs.count) entrenamientos")
-                                    .scaledFont(size: 13)
-                                    .foregroundColor(Theme.textSecondary)
+                            // Estadísticas → detalle con gráfico
+                            NavigationLink(destination: StatsDetailView()) {
+                                SettingsRowView(icon: "chart.bar.fill", tint: Theme.blue, title: "Estadísticas") {
+                                    HStack(spacing: 4) {
+                                        Text("\(logs.count) entrenamientos")
+                                            .scaledFont(size: 13)
+                                            .foregroundColor(Theme.textSecondary)
+                                        Image(systemName: "chevron.right")
+                                            .scaledFont(size: 13, weight: .semibold)
+                                            .foregroundColor(Theme.textSecondary)
+                                            .accessibilityHidden(true)
+                                    }
+                                }
                             }
                             .accessibilityElement(children: .combine)
+                            .accessibilityAddTraits(.isButton)
                             Divider().background(Color.white.opacity(0.08))
 
-                            Button(action: { showExportAlert = true }) {
+                            // Exportar datos
+                            Button(action: exportData) {
                                 SettingsRowView(icon: "square.and.arrow.up.fill", tint: Theme.purple, title: "Exportar datos") {
                                     Image(systemName: "chevron.right")
                                         .scaledFont(size: 13, weight: .semibold)
@@ -98,8 +119,9 @@ struct ProfileView: View {
                             .accessibilityAddTraits(.isButton)
                             Divider().background(Color.white.opacity(0.08))
 
+                            // Importar datos
                             Button(action: { showImporter = true }) {
-                                SettingsRowView(icon: "tray.and.arrow.down.fill", tint: Theme.teal, title: "Importar desde la PWA") {
+                                SettingsRowView(icon: "tray.and.arrow.down.fill", tint: Theme.teal, title: "Importar datos") {
                                     Image(systemName: "chevron.right")
                                         .scaledFont(size: 13, weight: .semibold)
                                         .foregroundColor(Theme.textSecondary)
@@ -125,23 +147,28 @@ struct ProfileView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .onAppear(perform: refreshNotificationStatus)
+            .sheet(isPresented: $showShareSheet) {
+                if let url = exportFileURL {
+                    ShareSheet(url: url)
+                }
+            }
             .alert("Editar nombre", isPresented: $showEditName) {
                 TextField("Tu nombre", text: $nameInput)
                 Button("Cancelar", role: .cancel) {}
                 Button("Guardar") {
-                    let trimmed = nameInput.trimmingCharacters(in: .whitespaces)
-                    if !trimmed.isEmpty { userName = trimmed }
+                    let t = nameInput.trimmingCharacters(in: .whitespaces)
+                    if !t.isEmpty { userName = t }
                 }
             }
-            .alert("Próximamente", isPresented: $showExportAlert) {
+            .alert("Error al exportar", isPresented: $showExportErrorAlert) {
                 Button("Entendido", role: .cancel) {}
             } message: {
-                Text("La exportación de datos estará disponible en una futura actualización.")
+                Text(exportError ?? "Error desconocido")
             }
             .alert("Atajos de Siri", isPresented: $showSiriTipAlert) {
                 Button("Entendido", role: .cancel) {}
             } message: {
-                Text("Mientras entrenas, prueba decir \"Oye Siri, marca serie en GymFlow\" para avanzar sin soltar las pesas.")
+                Text("Mientras entrenas, prueba decir «Marca serie» o «Marca serie en GymFlow» para avanzar sin soltar las pesas. Abre la app Atajos para crear tu propia frase personalizada.")
             }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
                 handleImportResult(result)
@@ -154,40 +181,50 @@ struct ProfileView: View {
         }
     }
 
+    // MARK: - Export
+
+    private func exportData() {
+        let service = DataExportService.shared
+        let backup = service.createBackup(routines: Array(routines), logs: Array(logs))
+        do {
+            let url = try service.saveToTemporaryFile(backup)
+            exportFileURL = url
+            showShareSheet = true
+        } catch {
+            exportError = error.localizedDescription
+            showExportErrorAlert = true
+        }
+    }
+
+    // MARK: - Import
+
     private func handleImportResult(_ result: Result<URL, Error>) {
-        let language = AppLanguage.current
         switch result {
         case .success(let url):
             let needsAccess = url.startAccessingSecurityScopedResource()
             defer { if needsAccess { url.stopAccessingSecurityScopedResource() } }
             do {
-                let migration = try DataMigrationService.importData(from: url, into: modelContext)
-                importResultMessage = importedSummary(migration, language: language)
+                let migration = try DataExportService.shared.smartImport(from: url, into: modelContext)
+                let language = AppLanguage.current
+                if language == .english {
+                    importResultMessage = "Imported \(migration.importedRoutines) routine(s) and \(migration.importedLogs) workout(s)."
+                } else {
+                    importResultMessage = "Se importaron \(migration.importedRoutines) rutina(s) y \(migration.importedLogs) entrenamiento(s)."
+                }
             } catch {
-                importResultMessage = importFailureMessage(error, language: language)
+                importResultMessage = AppLanguage.current == .english
+                    ? "Couldn't import: \(error.localizedDescription)"
+                    : "No se pudo importar: \(error.localizedDescription)"
             }
         case .failure(let error):
-            importResultMessage = importFailureMessage(error, language: language)
+            importResultMessage = AppLanguage.current == .english
+                ? "Couldn't open file: \(error.localizedDescription)"
+                : "No se pudo abrir el archivo: \(error.localizedDescription)"
         }
         showImportResultAlert = true
     }
 
-    private func importedSummary(_ migration: MigrationResult, language: AppLanguage) -> String {
-        if language == .english {
-            let routineWord = migration.importedRoutines == 1 ? "routine" : "routines"
-            let logWord = migration.importedLogs == 1 ? "workout" : "workouts"
-            return "Imported \(migration.importedRoutines) \(routineWord) and \(migration.importedLogs) \(logWord) from your history."
-        }
-        let routineWord = migration.importedRoutines == 1 ? "rutina" : "rutinas"
-        let logWord = migration.importedLogs == 1 ? "entrenamiento" : "entrenamientos"
-        return "Se importaron \(migration.importedRoutines) \(routineWord) y \(migration.importedLogs) \(logWord) del historial."
-    }
-
-    private func importFailureMessage(_ error: Error, language: AppLanguage) -> String {
-        language == .english
-            ? "Couldn't import: \(error.localizedDescription)"
-            : "No se pudo importar: \(error.localizedDescription)"
-    }
+    // MARK: - Profile Header
 
     private var profileHeader: some View {
         VStack(spacing: 12) {
@@ -264,19 +301,29 @@ struct ProfileView: View {
     }
 
     private func requestNotificationPermission() {
-        NotificationService.shared.requestPermission { _ in
-            refreshNotificationStatus()
-        }
+        NotificationService.shared.requestPermission { _ in refreshNotificationStatus() }
     }
 
     private func refreshNotificationStatus() {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
-            DispatchQueue.main.async {
-                notificationStatus = settings.authorizationStatus
-            }
+            DispatchQueue.main.async { notificationStatus = settings.authorizationStatus }
         }
     }
 }
+
+// MARK: - ShareSheet (UIActivityViewController wrapper)
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - Supporting views
 
 struct PermissionDeniedBanner: View {
     var body: some View {
@@ -297,28 +344,22 @@ struct PermissionDeniedBanner: View {
                 }
                 .accessibilityElement(children: .combine)
 
-                Button(action: openSettings) {
+                Button(action: {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }) {
                     Text("Abrir Ajustes")
                         .scaledFont(size: 13, weight: .bold)
                         .foregroundColor(Theme.amber)
                 }
                 .padding(.top, 2)
             }
-
             Spacer()
         }
         .padding(14)
         .background(Theme.red.opacity(0.1))
         .cornerRadius(14)
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Theme.red.opacity(0.25), lineWidth: 1)
-        )
-    }
-
-    private func openSettings() {
-        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-        UIApplication.shared.open(url)
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.red.opacity(0.25), lineWidth: 1))
     }
 }
 

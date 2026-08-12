@@ -1,13 +1,13 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct RoutineEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    
-    // Si se pasa una rutina, es modo edición
+
     var routineToEdit: Routine?
-    
+
     @State private var name: String = ""
     @State private var desc: String = ""
     @State private var colorHex: String = Theme.palette[0]
@@ -15,20 +15,20 @@ struct RoutineEditorView: View {
     @State private var days: Set<Int> = []
     @State private var time: Date = Calendar.current.date(from: DateComponents(hour: 7, minute: 0)) ?? Date()
     @State private var hasTime: Bool = true
-    
-    // Copia temporal de los ejercicios para editar
+
     @State private var exercises: [Exercise] = []
+    @State private var draggedIndex: Int? = nil
     @State private var showExercisePicker = false
-    
+
     init(routineToEdit: Routine? = nil) {
         self.routineToEdit = routineToEdit
     }
-    
+
     var body: some View {
         NavigationStack {
             ZStack {
                 Theme.background.ignoresSafeArea()
-                
+
                 ScrollView {
                     VStack(spacing: 20) {
                         // Info básica
@@ -37,30 +37,27 @@ struct RoutineEditorView: View {
                                 TextField("ej. Piernas y Glúteos", text: $name)
                                     .textFieldStyle(CustomTextFieldStyle())
                             }
-                            
                             formField(label: "Descripción (opcional)") {
                                 TextField("Notas sobre esta rutina...", text: $desc)
                                     .textFieldStyle(CustomTextFieldStyle())
                             }
                         }
-                        
+
                         // Diseño
                         VStack(alignment: .leading, spacing: 16) {
                             formField(label: "Color") {
                                 ColorPickerGrid(selectedColor: $colorHex)
                             }
-                            
                             formField(label: "Ícono") {
                                 IconPickerGrid(selectedIcon: $icon)
                             }
                         }
-                        
+
                         // Horario
                         VStack(alignment: .leading, spacing: 16) {
                             formField(label: "Días") {
                                 DayPickerRow(selectedDays: $days)
                             }
-                            
                             Toggle(isOn: $hasTime) {
                                 Text("Recordatorio")
                                     .scaledFont(size: 13, weight: .semibold)
@@ -68,7 +65,6 @@ struct RoutineEditorView: View {
                                     .textCase(.uppercase)
                             }
                             .tint(Theme.amber)
-                            
                             if hasTime {
                                 DatePicker("Hora", selection: $time, displayedComponents: .hourAndMinute)
                                     .colorScheme(.dark)
@@ -76,7 +72,7 @@ struct RoutineEditorView: View {
                                     .foregroundColor(Theme.text)
                             }
                         }
-                        
+
                         // Ejercicios
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
@@ -87,8 +83,7 @@ struct RoutineEditorView: View {
                                 Spacer()
                                 Button(action: { showExercisePicker = true }) {
                                     HStack(spacing: 4) {
-                                        Image(systemName: "plus")
-                                            .accessibilityHidden(true)
+                                        Image(systemName: "plus").accessibilityHidden(true)
                                         Text("Agregar")
                                     }
                                     .scaledFont(size: 14, weight: .bold)
@@ -106,13 +101,35 @@ struct RoutineEditorView: View {
                                     .frame(maxWidth: .infinity, alignment: .center)
                                     .padding(.vertical, 20)
                             } else {
-                                ForEach($exercises.indices, id: \.self) { index in
-                                    ExerciseRowEdit(exercise: $exercises[index], onRemove: {
-                                        withAnimation {
-                                            _ = exercises.remove(at: index)
+                                VStack(spacing: 8) {
+                                    ForEach(exercises.indices, id: \.self) { index in
+                                        ExerciseRowEdit(
+                                            exercise: $exercises[index],
+                                            onRemove: {
+                                                withAnimation { exercises.remove(at: index) }
+                                            }
+                                        )
+                                        .overlay(alignment: .leading) {
+                                            Image(systemName: "line.3.horizontal")
+                                                .scaledFont(size: 16)
+                                                .foregroundColor(Theme.textSecondary.opacity(0.6))
+                                                .padding(.leading, 6)
+                                                .accessibilityHidden(true)
                                         }
-                                    })
-                                    .transition(.opacity.combined(with: .move(edge: .trailing)))
+                                        .onDrag {
+                                            draggedIndex = index
+                                            return NSItemProvider(object: "\(index)" as NSString)
+                                        }
+                                        .onDrop(
+                                            of: [UTType.text],
+                                            delegate: ExerciseReorderDelegate(
+                                                targetIndex: index,
+                                                exercises: $exercises,
+                                                draggedIndex: $draggedIndex
+                                            )
+                                        )
+                                        .transition(.opacity.combined(with: .move(edge: .trailing)))
+                                    }
                                 }
                             }
                         }
@@ -138,13 +155,11 @@ struct RoutineEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { dismiss() }
-                        .foregroundColor(Theme.amber)
+                    Button("Cancelar") { dismiss() }.foregroundColor(Theme.amber)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Guardar") { saveRoutine() }
-                        .foregroundColor(Theme.amber)
-                        .fontWeight(.bold)
+                        .foregroundColor(Theme.amber).fontWeight(.bold)
                 }
             }
             .toolbarBackground(Theme.cardBackground, for: .navigationBar)
@@ -156,7 +171,7 @@ struct RoutineEditorView: View {
             }
         }
     }
-    
+
     private func formField<Content: View>(label: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label)
@@ -167,75 +182,83 @@ struct RoutineEditorView: View {
             content()
         }
     }
-    
+
     private func loadData() {
-        if let routine = routineToEdit {
-            name = routine.name
-            desc = routine.desc
-            colorHex = routine.colorHex
-            icon = routine.icon
-            days = Set(routine.days)
-            if let t = routine.time {
-                time = t
-                hasTime = true
-            } else {
-                hasTime = false
-            }
-            // Realizar copia de ejercicios
-            exercises = routine.exercises.sorted(by: { $0.order < $1.order }).map { ex in
-                Exercise(id: ex.id, name: ex.name, icon: ex.icon, category: ex.category, unit: ex.unit, sets: ex.sets, defaultValue: ex.defaultValue, order: ex.order)
-            }
+        guard let routine = routineToEdit else { return }
+        name = routine.name
+        desc = routine.desc
+        colorHex = routine.colorHex
+        icon = routine.icon
+        days = Set(routine.days)
+        if let t = routine.time { time = t; hasTime = true } else { hasTime = false }
+        exercises = routine.exercises.sorted { $0.order < $1.order }.map { ex in
+            Exercise(id: ex.id, name: ex.name, icon: ex.icon, category: ex.category,
+                     unit: ex.unit, sets: ex.sets, defaultValue: ex.defaultValue, order: ex.order)
         }
     }
-    
+
     private func saveRoutine() {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        
+
         let routine: Routine
         if let existing = routineToEdit {
             routine = existing
-            routine.name = name
-            routine.desc = desc
-            routine.colorHex = colorHex
-            routine.icon = icon
-            routine.days = Array(days)
-            routine.time = hasTime ? time : nil
-            routine.updatedAt = Date()
-            
-            // Reemplazar ejercicios (eliminar viejos y poner los de la copia)
-            for ex in routine.exercises {
-                modelContext.delete(ex)
-            }
+            routine.name = name; routine.desc = desc; routine.colorHex = colorHex
+            routine.icon = icon; routine.days = Array(days)
+            routine.time = hasTime ? time : nil; routine.updatedAt = Date()
+            for ex in routine.exercises { modelContext.delete(ex) }
             routine.exercises = []
         } else {
-            routine = Routine(name: name, desc: desc, colorHex: colorHex, icon: icon, days: Array(days), time: hasTime ? time : nil)
+            routine = Routine(name: name, desc: desc, colorHex: colorHex, icon: icon,
+                              days: Array(days), time: hasTime ? time : nil)
             modelContext.insert(routine)
         }
-        
-        
-        // Agregar ejercicios a la rutina actualizando el order
+
         for (i, ex) in exercises.enumerated() {
             ex.order = i
             ex.routine = routine
             routine.exercises.append(ex)
         }
-        
         try? modelContext.save()
-        
-        // Programar notificaciones
+
         if routine.time != nil && !routine.days.isEmpty {
             NotificationService.shared.requestPermission { granted in
-                if granted {
-                    NotificationService.shared.scheduleNotifications(for: routine)
-                }
+                if granted { NotificationService.shared.scheduleNotifications(for: routine) }
             }
         } else {
             NotificationService.shared.cancelNotifications(for: routine)
         }
-        
         dismiss()
     }
 }
+
+// MARK: - Drag-to-reorder delegate
+
+struct ExerciseReorderDelegate: DropDelegate {
+    let targetIndex: Int
+    @Binding var exercises: [Exercise]
+    @Binding var draggedIndex: Int?
+
+    func dropEntered(info: DropInfo) {
+        guard let from = draggedIndex, from != targetIndex else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            exercises.move(fromOffsets: IndexSet(integer: from),
+                           toOffset: targetIndex > from ? targetIndex + 1 : targetIndex)
+        }
+        draggedIndex = targetIndex
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedIndex = nil
+        return true
+    }
+}
+
+// MARK: - Supporting views (shared with DataExportService-free files)
 
 struct CustomTextFieldStyle: TextFieldStyle {
     func _body(configuration: TextField<Self._Label>) -> some View {
@@ -245,19 +268,17 @@ struct CustomTextFieldStyle: TextFieldStyle {
             .padding(14)
             .background(Color(hex: "#2C2C2E"))
             .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color(hex: "#3A3A3C"), lineWidth: 1)
-            )
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#3A3A3C"), lineWidth: 1))
     }
 }
 
 struct ExerciseRowEdit: View {
     @Binding var exercise: Exercise
     var onRemove: () -> Void
-    
+
     var body: some View {
         HStack(spacing: 12) {
+            // Icon — leave space on left for the drag handle overlay
             ZStack {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color(hex: "#2C2C2E"))
@@ -265,6 +286,7 @@ struct ExerciseRowEdit: View {
                 Text(exercise.icon)
                     .scaledFont(size: 18)
             }
+            .padding(.leading, 18)  // offset so drag handle doesn't overlap icon
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(ExerciseCatalog.displayName(id: exercise.id, storedName: exercise.name))
@@ -274,11 +296,10 @@ struct ExerciseRowEdit: View {
                     .scaledFont(size: 12)
                     .foregroundColor(Theme.textSecondary)
             }
-            
+
             Spacer()
-            
+
             HStack(spacing: 6) {
-                // Stepper custom or simple text fields for Phase 1
                 VStack(spacing: 2) {
                     Text("Series")
                         .scaledFont(size: 9)
@@ -291,7 +312,7 @@ struct ExerciseRowEdit: View {
                         .background(Color(hex: "#2C2C2E"))
                         .cornerRadius(6)
                         .foregroundColor(Theme.text)
-                        .accessibilityLabel(labelJoiner(setsWord.capitalized, exerciseDisplayName))
+                        .accessibilityLabel("Series de \(exerciseDisplayName)")
                 }
 
                 Text("×")
@@ -311,7 +332,7 @@ struct ExerciseRowEdit: View {
                         .background(Color(hex: "#2C2C2E"))
                         .cornerRadius(6)
                         .foregroundColor(Theme.text)
-                        .accessibilityLabel(labelJoiner(ExerciseCatalog.displayUnit(exercise.unit).capitalized, exerciseDisplayName))
+                        .accessibilityLabel("\(ExerciseCatalog.displayUnit(exercise.unit)) de \(exerciseDisplayName)")
                 }
 
                 Button(action: onRemove) {
@@ -326,10 +347,7 @@ struct ExerciseRowEdit: View {
         .padding(12)
         .background(Color(hex: "#1C1C1E"))
         .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color(hex: "#3A3A3C"), lineWidth: 1)
-        )
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#3A3A3C"), lineWidth: 1))
     }
 
     private var exerciseDisplayName: String {
@@ -338,9 +356,5 @@ struct ExerciseRowEdit: View {
 
     private var setsWord: String {
         AppLanguage.current == .english ? "sets" : "series"
-    }
-
-    private func labelJoiner(_ field: String, _ name: String) -> String {
-        AppLanguage.current == .english ? "\(field) for \(name)" : "\(field) de \(name)"
     }
 }

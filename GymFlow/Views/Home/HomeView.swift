@@ -9,57 +9,79 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-            VStack(spacing: 20) {
-                GreetingCard(userName: userName, routinesCount: routines.count)
-                
-                StatsRow(totalRoutines: routines.count, streak: calculateStreak())
-                
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Hoy")
-                        .scaledFont(size: 20, weight: .heavy)
-                        .foregroundColor(Theme.text)
-                    
-                    let todayRoutines = getTodayRoutines()
-                    if todayRoutines.isEmpty {
-                        VStack(spacing: 8) {
-                            Text("🌟")
-                                .scaledFont(size: 36)
-                            Text("No tienes rutinas para hoy.")
-                                .foregroundColor(Theme.text)
-                            Text("Descansa o crea una rutina nueva.")
-                                .scaledFont(size: 13)
-                                .foregroundColor(Theme.textSecondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 28)
-                        .glassCard()
-                    } else {
-                        ForEach(todayRoutines) { routine in
-                            NavigationLink(destination: ActiveWorkoutView(routine: routine)) {
-                                TodayRoutineCard(routine: routine)
+                VStack(spacing: 20) {
+                    GreetingCard(userName: userName, routinesCount: routines.count)
+
+                    StatsRow(
+                        streak: calculateStreak(),
+                        empezadas: progress.count,
+                        completadas: progress.filter { $0.isCompleted }.count
+                    )
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Hoy")
+                            .scaledFont(size: 20, weight: .heavy)
+                            .foregroundColor(Theme.text)
+
+                        let todayRoutines = getTodayRoutines()
+                        if todayRoutines.isEmpty {
+                            VStack(spacing: 8) {
+                                Text("🌟")
+                                    .scaledFont(size: 36)
+                                Text("No tienes rutinas para hoy.")
+                                    .foregroundColor(Theme.text)
+                                Text("Descansa o crea una rutina nueva.")
+                                    .scaledFont(size: 13)
+                                    .foregroundColor(Theme.textSecondary)
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 28)
+                            .glassCard()
+                        } else {
+                            ForEach(todayRoutines) { routine in
+                                NavigationLink(destination: ActiveWorkoutView(routine: routine)) {
+                                    TodayRoutineCard(routine: routine)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
                         }
                     }
                 }
+                .padding()
             }
-            .padding()
         }
     }
-    }
-    
+
     private func getTodayRoutines() -> [Routine] {
-        let calendar = Calendar.current
-        // Map iOS weekday (1=Sun, 2=Mon...) to GymFlow weekday (0=Mon, 1=Tue...)
-        let weekday = calendar.component(.weekday, from: Date())
-        let gymflowWeekday = (weekday == 1) ? 6 : weekday - 2
-        
+        let weekday = Calendar.current.component(.weekday, from: Date())
+        let gymflowWeekday = weekday == 1 ? 6 : weekday - 2
         return routines.filter { $0.days.contains(gymflowWeekday) }
     }
-    
+
+    /// Días consecutivos hacia atrás en los que hay al menos un entrenamiento
+    /// marcado como isCompleted == true.
     private func calculateStreak() -> Int {
-        // Dummy implementation for Phase 1
-        return progress.count
+        let calendar = Calendar.current
+        let completedDays = Set(
+            progress
+                .filter { $0.isCompleted }
+                .map { calendar.startOfDay(for: $0.date) }
+        ).sorted(by: >)
+
+        guard !completedDays.isEmpty else { return 0 }
+
+        var streak = 0
+        var currentDay = calendar.startOfDay(for: Date())
+
+        for day in completedDays {
+            if day == currentDay {
+                streak += 1
+                currentDay = calendar.date(byAdding: .day, value: -1, to: currentDay)!
+            } else {
+                break
+            }
+        }
+        return streak
     }
 }
 
@@ -79,7 +101,7 @@ struct GreetingCard: View {
                 Text("\(displayName) 👋")
                     .scaledFont(size: 30, weight: .heavy)
                     .foregroundColor(Theme.text)
-                
+
                 Text("\(routinesCount) rutinas creadas")
                     .scaledFont(size: 14)
                     .foregroundColor(Theme.textSecondary)
@@ -89,13 +111,10 @@ struct GreetingCard: View {
         .padding(22)
         .background(Theme.amber.opacity(0.13))
         .cornerRadius(22)
-        .overlay(
-            RoundedRectangle(cornerRadius: 22)
-                .stroke(Theme.amber.opacity(0.28), lineWidth: 1)
-        )
+        .overlay(RoundedRectangle(cornerRadius: 22).stroke(Theme.amber.opacity(0.28), lineWidth: 1))
         .accessibilityElement(children: .combine)
     }
-    
+
     private var displayName: String {
         userName.trimmingCharacters(in: .whitespaces).isEmpty ? "GymFlow" : userName
     }
@@ -108,14 +127,15 @@ struct GreetingCard: View {
 }
 
 struct StatsRow: View {
-    let totalRoutines: Int
     let streak: Int
-    
+    let empezadas: Int
+    let completadas: Int
+
     var body: some View {
         HStack(spacing: 10) {
-            StatCard(value: "\(streak)", label: "Racha", color: Theme.amber)
-            StatCard(value: "\(totalRoutines)", label: "Rutinas", color: Theme.green)
-            StatCard(value: "0", label: "Esta semana", color: Theme.blue)
+            StatCard(value: "\(streak)", label: "Racha 🔥", color: Theme.amber)
+            StatCard(value: "\(empezadas)", label: "Empezadas", color: Theme.blue)
+            StatCard(value: "\(completadas)", label: "Completas", color: Theme.green)
         }
     }
 }
@@ -136,6 +156,7 @@ struct StatCard: View {
                 .scaledFont(size: 11, weight: .medium)
                 .foregroundColor(Theme.textSecondary)
                 .textCase(.uppercase)
+                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
@@ -148,7 +169,7 @@ struct StatCard: View {
 
 struct TodayRoutineCard: View {
     let routine: Routine
-    
+
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
@@ -158,7 +179,7 @@ struct TodayRoutineCard: View {
                 Text(routine.icon)
                     .scaledFont(size: 22)
             }
-            
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(routine.name)
                     .scaledFont(size: 16, weight: .bold)
@@ -167,15 +188,15 @@ struct TodayRoutineCard: View {
                     .scaledFont(size: 13)
                     .foregroundColor(Theme.textSecondary)
             }
-            
+
             Spacer()
-            
+
             if let time = routine.time {
                 Text(time, style: .time)
                     .scaledFont(size: 13, weight: .semibold)
                     .foregroundColor(Theme.amber)
             }
-            
+
             Circle()
                 .stroke(Color.white.opacity(0.3), lineWidth: 2)
                 .frame(width: 26, height: 26)
