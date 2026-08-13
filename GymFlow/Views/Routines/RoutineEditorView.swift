@@ -24,6 +24,10 @@ struct RoutineEditorView: View {
         self.routineToEdit = routineToEdit
     }
 
+    private var navTitle: String {
+        routineToEdit == nil ? "Nueva Rutina" : "Editar Rutina"
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -31,135 +35,32 @@ struct RoutineEditorView: View {
 
                 ScrollView {
                     VStack(spacing: 20) {
-                        // Info básica
-                        VStack(alignment: .leading, spacing: 16) {
-                            formField(label: "Nombre") {
-                                TextField("ej. Piernas y Glúteos", text: $name)
-                                    .textFieldStyle(CustomTextFieldStyle())
-                            }
-                            formField(label: "Descripción (opcional)") {
-                                TextField("Notas sobre esta rutina...", text: $desc)
-                                    .textFieldStyle(CustomTextFieldStyle())
-                            }
-                        }
+                        basicInfoSection
+                        designSection
+                        scheduleSection
 
-                        // Diseño
-                        VStack(alignment: .leading, spacing: 16) {
-                            formField(label: "Color") {
-                                ColorPickerGrid(selectedColor: $colorHex)
-                            }
-                            formField(label: "Ícono") {
-                                IconPickerGrid(selectedIcon: $icon)
-                            }
-                        }
+                        RoutineExercisesSection(
+                            exercises: $exercises,
+                            draggedIndex: $draggedIndex,
+                            onAdd: { showExercisePicker = true }
+                        )
 
-                        // Horario
-                        VStack(alignment: .leading, spacing: 16) {
-                            formField(label: "Días") {
-                                DayPickerRow(selectedDays: $days)
-                            }
-                            Toggle(isOn: $hasTime) {
-                                Text("Recordatorio")
-                                    .scaledFont(size: 13, weight: .semibold)
-                                    .foregroundColor(Theme.textSecondary)
-                                    .textCase(.uppercase)
-                            }
-                            .tint(Theme.amber)
-                            if hasTime {
-                                DatePicker("Hora", selection: $time, displayedComponents: .hourAndMinute)
-                                    .colorScheme(.dark)
-                                    .scaledFont(size: 16, weight: .medium)
-                                    .foregroundColor(Theme.text)
-                            }
-                        }
-
-                        // Ejercicios
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack {
-                                Text("Ejercicios")
-                                    .scaledFont(size: 13, weight: .semibold)
-                                    .foregroundColor(Theme.textSecondary)
-                                    .textCase(.uppercase)
-                                Spacer()
-                                Button(action: { showExercisePicker = true }) {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "plus").accessibilityHidden(true)
-                                        Text("Agregar")
-                                    }
-                                    .scaledFont(size: 14, weight: .bold)
-                                    .foregroundColor(Theme.text)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .glassCard()
-                                }
-                            }
-
-                            if exercises.isEmpty {
-                                Text("Sin ejercicios. Toca \"＋ Agregar\".")
-                                    .scaledFont(size: 14)
-                                    .foregroundColor(Theme.textSecondary)
-                                    .frame(maxWidth: .infinity, alignment: .center)
-                                    .padding(.vertical, 20)
-                            } else {
-                                VStack(spacing: 8) {
-                                    ForEach(exercises.indices, id: \.self) { index in
-                                        ExerciseRowEdit(
-                                            exercise: $exercises[index],
-                                            onRemove: {
-                                                withAnimation { exercises.remove(at: index) }
-                                            }
-                                        )
-                                        .overlay(alignment: .leading) {
-                                            Image(systemName: "line.3.horizontal")
-                                                .scaledFont(size: 16)
-                                                .foregroundColor(Theme.textSecondary.opacity(0.6))
-                                                .padding(.leading, 6)
-                                                .accessibilityHidden(true)
-                                        }
-                                        .onDrag {
-                                            draggedIndex = index
-                                            return NSItemProvider(object: "\(index)" as NSString)
-                                        }
-                                        .onDrop(
-                                            of: [UTType.text],
-                                            delegate: ExerciseReorderDelegate(
-                                                targetIndex: index,
-                                                exercises: $exercises,
-                                                draggedIndex: $draggedIndex
-                                            )
-                                        )
-                                        .transition(.opacity.combined(with: .move(edge: .trailing)))
-                                    }
-                                }
-                            }
-                        }
-                        .animation(.easeInOut(duration: 0.2), value: exercises.count)
-
-                        // Botón de guardar
-                        Button(action: saveRoutine) {
-                            Text("Guardar Rutina")
-                                .scaledFont(size: 16, weight: .bold)
-                                .foregroundColor(.black)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(Theme.amber)
-                                .cornerRadius(16)
-                        }
-                        .padding(.top, 10)
-                        .padding(.bottom, 40)
+                        saveButton
                     }
                     .padding()
                 }
             }
-            .navigationTitle(routineToEdit == nil ? "Nueva Rutina" : "Editar Rutina")
+            .navigationTitle(navTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { dismiss() }.foregroundColor(Theme.amber)
+                    Button("Cancelar") { dismiss() }
+                        .foregroundColor(Theme.amber)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Guardar") { saveRoutine() }
-                        .foregroundColor(Theme.amber).fontWeight(.bold)
+                        .foregroundColor(Theme.amber)
+                        .fontWeight(.bold)
                 }
             }
             .toolbarBackground(Theme.cardBackground, for: .navigationBar)
@@ -170,6 +71,70 @@ struct RoutineEditorView: View {
                 ExercisePickerView(selectedExercises: $exercises)
             }
         }
+    }
+
+    // MARK: - Secciones
+
+    private var basicInfoSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            formField(label: "Nombre") {
+                TextField("ej. Piernas y Glúteos", text: $name)
+                    .textFieldStyle(CustomTextFieldStyle())
+            }
+            formField(label: "Descripción (opcional)") {
+                TextField("Notas sobre esta rutina...", text: $desc)
+                    .textFieldStyle(CustomTextFieldStyle())
+            }
+        }
+    }
+
+    private var designSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            formField(label: "Color") {
+                ColorPickerGrid(selectedColor: $colorHex)
+            }
+            formField(label: "Ícono") {
+                IconPickerGrid(selectedIcon: $icon)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var scheduleSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            formField(label: "Días") {
+                DayPickerRow(selectedDays: $days)
+            }
+
+            Toggle(isOn: $hasTime) {
+                Text("Recordatorio")
+                    .scaledFont(size: 13, weight: .semibold)
+                    .foregroundColor(Theme.textSecondary)
+                    .textCase(.uppercase)
+            }
+            .tint(Theme.amber)
+
+            if hasTime {
+                DatePicker("Hora", selection: $time, displayedComponents: .hourAndMinute)
+                    .colorScheme(.dark)
+                    .scaledFont(size: 16, weight: .medium)
+                    .foregroundColor(Theme.text)
+            }
+        }
+    }
+
+    private var saveButton: some View {
+        Button(action: saveRoutine) {
+            Text("Guardar Rutina")
+                .scaledFont(size: 16, weight: .bold)
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Theme.amber)
+                .cornerRadius(16)
+        }
+        .padding(.top, 10)
+        .padding(.bottom, 40)
     }
 
     private func formField<Content: View>(label: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
@@ -232,6 +197,93 @@ struct RoutineEditorView: View {
     }
 }
 
+// MARK: - Sección de ejercicios (extraída para no reventar el type-checker)
+
+struct RoutineExercisesSection: View {
+    @Binding var exercises: [Exercise]
+    @Binding var draggedIndex: Int?
+    let onAdd: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            header
+
+            if exercises.isEmpty {
+                Text("Sin ejercicios. Toca \"＋ Agregar\".")
+                    .scaledFont(size: 14)
+                    .foregroundColor(Theme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 20)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(exercises.indices, id: \.self) { index in
+                        row(at: index)
+                    }
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: exercises.count)
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Ejercicios")
+                .scaledFont(size: 13, weight: .semibold)
+                .foregroundColor(Theme.textSecondary)
+                .textCase(.uppercase)
+
+            Spacer()
+
+            Button(action: onAdd) {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus").accessibilityHidden(true)
+                    Text("Agregar")
+                }
+                .scaledFont(size: 14, weight: .bold)
+                .foregroundColor(Theme.text)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .glassCard()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func row(at index: Int) -> some View {
+        ExerciseRowEdit(
+            exercise: $exercises[index],
+            onRemove: { remove(at: index) }
+        )
+        .overlay(alignment: .leading) {
+            Image(systemName: "line.3.horizontal")
+                .scaledFont(size: 16)
+                .foregroundColor(Theme.textSecondary.opacity(0.6))
+                .padding(.leading, 6)
+                .accessibilityHidden(true)
+        }
+        .onDrag {
+            draggedIndex = index
+            return NSItemProvider(object: "\(index)" as NSString)
+        }
+        .onDrop(
+            of: [UTType.text],
+            delegate: ExerciseReorderDelegate(
+                targetIndex: index,
+                exercises: $exercises,
+                draggedIndex: $draggedIndex
+            )
+        )
+        .transition(.opacity.combined(with: .move(edge: .trailing)))
+    }
+
+    /// El índice viene capturado en el closure de la fila: si el array ya
+    /// encogió (doble tap, animación en curso) sería un índice fuera de rango.
+    private func remove(at index: Int) {
+        guard exercises.indices.contains(index) else { return }
+        withAnimation { exercises.remove(at: index) }
+    }
+}
+
 // MARK: - Drag-to-reorder delegate
 
 struct ExerciseReorderDelegate: DropDelegate {
@@ -240,7 +292,9 @@ struct ExerciseReorderDelegate: DropDelegate {
     @Binding var draggedIndex: Int?
 
     func dropEntered(info: DropInfo) {
-        guard let from = draggedIndex, from != targetIndex else { return }
+        guard let from = draggedIndex, from != targetIndex,
+              exercises.indices.contains(from),
+              exercises.indices.contains(targetIndex) else { return }
         withAnimation(.easeInOut(duration: 0.2)) {
             exercises.move(fromOffsets: IndexSet(integer: from),
                            toOffset: targetIndex > from ? targetIndex + 1 : targetIndex)

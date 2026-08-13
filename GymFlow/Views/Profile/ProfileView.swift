@@ -14,7 +14,6 @@ struct ProfileView: View {
     @State private var showEditName = false
     @State private var nameInput = ""
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
-    @State private var showSiriTipAlert = false
 
     // Export
     @State private var exportFileURL: URL? = nil
@@ -76,7 +75,7 @@ struct ProfileView: View {
                             Divider().background(Color.white.opacity(0.08))
 
                             // Siri
-                            Button(action: { showSiriTipAlert = true }) {
+                            NavigationLink(destination: SiriShortcutsView()) {
                                 SettingsRowView(icon: "waveform", tint: Theme.pink, title: "Atajos de Siri") {
                                     Image(systemName: "chevron.right")
                                         .scaledFont(size: 13, weight: .semibold)
@@ -164,11 +163,6 @@ struct ProfileView: View {
                 Button("Entendido", role: .cancel) {}
             } message: {
                 Text(exportError ?? "Error desconocido")
-            }
-            .alert("Atajos de Siri", isPresented: $showSiriTipAlert) {
-                Button("Entendido", role: .cancel) {}
-            } message: {
-                Text("Mientras entrenas, prueba decir «Marca serie» o «Marca serie en GymFlow» para avanzar sin soltar las pesas. Abre la app Atajos para crear tu propia frase personalizada.")
             }
             .fileImporter(isPresented: $showImporter, allowedContentTypes: [.json]) { result in
                 handleImportResult(result)
@@ -298,6 +292,11 @@ struct ProfileView: View {
     private func selectLanguage(_ language: AppLanguage) {
         languageCode = language.rawValue
         NotificationService.registerCategories()
+        // Las notificaciones ya programadas guardan su texto tal cual se creó,
+        // así que hay que reprogramarlas para que cambien de idioma.
+        for routine in routines where routine.time != nil && !routine.days.isEmpty {
+            NotificationService.shared.scheduleNotifications(for: routine)
+        }
     }
 
     private func requestNotificationPermission() {

@@ -1,6 +1,7 @@
 import ActivityKit
 import WidgetKit
 import SwiftUI
+import AppIntents
 
 struct GymFlowWidgetLiveActivity: Widget {
     var body: some WidgetConfiguration {
@@ -13,12 +14,11 @@ struct GymFlowWidgetLiveActivity: Widget {
                             .font(.system(size: 15, weight: .bold))
                             .foregroundColor(.white)
                     } icon: {
-                        Text("🏋️")
-                            .font(.system(size: 15))
+                        Text("🏋️").font(.system(size: 15))
                     }
-                    
+
                     Spacer()
-                    
+
                     if context.state.isCompleted {
                         Text("¡Completado! 🎉")
                             .font(.system(size: 13, weight: .bold))
@@ -29,18 +29,19 @@ struct GymFlowWidgetLiveActivity: Widget {
                             .foregroundColor(.orange)
                     }
                 }
-                
+
                 if !context.state.isCompleted {
                     HStack(spacing: 6) {
                         Text(context.state.currentExerciseName)
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(.white)
+                            .lineLimit(1)
                         Spacer()
                         Text("Serie \(context.state.currentSet)/\(context.state.totalSets)")
                             .font(.system(size: 13))
                             .foregroundColor(.white.opacity(0.7))
                     }
-                    
+
                     // Barra de progreso
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
@@ -56,6 +57,12 @@ struct GymFlowWidgetLiveActivity: Widget {
                         }
                     }
                     .frame(height: 8)
+
+                    // Botones interactivos (iOS 17+)
+                    if #available(iOS 17.0, *) {
+                        WorkoutActionButtons(compact: false)
+                            .padding(.top, 2)
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -82,11 +89,12 @@ struct GymFlowWidgetLiveActivity: Widget {
                         .foregroundColor(.orange)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(spacing: 6) {
+                    VStack(spacing: 8) {
                         HStack {
                             Text(context.state.currentExerciseName)
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.white)
+                                .lineLimit(1)
                             Spacer()
                             Text("Serie \(context.state.currentSet)/\(context.state.totalSets)")
                                 .font(.system(size: 12))
@@ -94,6 +102,10 @@ struct GymFlowWidgetLiveActivity: Widget {
                         }
                         ProgressView(value: context.state.progressPercent)
                             .tint(.orange)
+
+                        if #available(iOS 17.0, *), !context.state.isCompleted {
+                            WorkoutActionButtons(compact: true)
+                        }
                     }
                     .padding(.top, 4)
                 }
@@ -107,6 +119,49 @@ struct GymFlowWidgetLiveActivity: Widget {
                 Text("🏋️")
             }
             .keylineTint(.orange)
+        }
+    }
+}
+
+// MARK: - Botones interactivos
+
+@available(iOS 17.0, *)
+struct WorkoutActionButtons: View {
+    let compact: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(intent: MarkSetLiveActivityIntent()) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: compact ? 13 : 14, weight: .bold))
+                    Text("Marcar serie")
+                        .font(.system(size: compact ? 12 : 13, weight: .bold))
+                        .lineLimit(1)
+                }
+                .foregroundColor(.black)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, compact ? 7 : 9)
+                .background(Color.orange)
+                .cornerRadius(10)
+            }
+            .buttonStyle(.plain)
+
+            Button(intent: FinishWorkoutLiveActivityIntent()) {
+                HStack(spacing: 6) {
+                    Image(systemName: "flag.checkered")
+                        .font(.system(size: compact ? 13 : 14, weight: .bold))
+                    Text("Finalizar")
+                        .font(.system(size: compact ? 12 : 13, weight: .bold))
+                        .lineLimit(1)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, compact ? 7 : 9)
+                .background(Color.white.opacity(0.18))
+                .cornerRadius(10)
+            }
+            .buttonStyle(.plain)
         }
     }
 }

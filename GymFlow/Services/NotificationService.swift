@@ -78,30 +78,33 @@ class NotificationService {
         let calendar = Calendar.current
         let timeComponents = calendar.dateComponents([.hour, .minute], from: time)
         guard let hour = timeComponents.hour, let minute = timeComponents.minute else { return }
-        
-        // Calcular 1 hora antes
-        var targetHour = hour - 1
-        var targetMinute = minute
-        if targetHour < 0 {
-            targetHour += 24
-        }
-        
+
+        // Recordatorio 1 hora antes. Si eso cruza la medianoche hacia atrás
+        // (rutina entre 00:00 y 00:59) hay que retroceder también el DÍA, o
+        // la notificación se programaría a las 23:xx del mismo día — es decir,
+        // casi 24 horas tarde.
+        let crossesMidnight = hour < 1
+        let targetHour = crossesMidnight ? hour + 23 : hour - 1
+        let targetMinute = minute
+
         for day in routine.days {
-            // GymFlow days: 0=Mon, 1=Tue...
+            // GymFlow days: 0=Mon, 1=Tue... 6=Sun
+            let notifyDay = crossesMidnight ? (day + 6) % 7 : day
             // Apple Calendar weekday: 1=Sun, 2=Mon...
-            let appleWeekday = (day == 6) ? 1 : day + 2
-            
+            let appleWeekday = (notifyDay == 6) ? 1 : notifyDay + 2
+
             var dateComponents = DateComponents()
             dateComponents.weekday = appleWeekday
             dateComponents.hour = targetHour
             dateComponents.minute = targetMinute
-            
+
             let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
-            
-            // Unique identifier for each day of this routine
+
+            // El identificador usa el día de la RUTINA (no el de la notificación)
+            // para que cancelNotifications(for:) siga encontrándolos todos.
             let requestIdentifier = "\(routine.id.uuidString)-\(day)"
             let request = UNNotificationRequest(identifier: requestIdentifier, content: content, trigger: trigger)
-            
+
             UNUserNotificationCenter.current().add(request) { error in
                 if let error = error {
                     print("Error scheduling notification: \(error)")

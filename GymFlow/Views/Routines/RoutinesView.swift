@@ -46,10 +46,7 @@ struct RoutinesView: View {
                                     }
                                     .contextMenu {
                                         Button(role: .destructive) {
-                                            withAnimation {
-                                                NotificationService.shared.cancelNotifications(for: routine)
-                                                modelContext.delete(routine)
-                                            }
+                                            deleteRoutine(routine)
                                         } label: {
                                             Label("Eliminar", systemImage: "trash")
                                         }
@@ -72,6 +69,20 @@ struct RoutinesView: View {
             .sheet(item: $routineToEdit) { routine in
                 RoutineEditorView(routineToEdit: routine)
             }
+        }
+    }
+
+    @MainActor
+    private func deleteRoutine(_ routine: Routine) {
+        // Si esta rutina está en curso, corta la sesión primero: si no, la
+        // sesión quedaría apuntando a un objeto SwiftData ya eliminado.
+        if ActiveWorkoutSession.shared.isRunning(routineId: routine.id) {
+            ActiveWorkoutSession.shared.cancelActiveWorkout(external: true)
+        }
+        withAnimation {
+            NotificationService.shared.cancelNotifications(for: routine)
+            modelContext.delete(routine)
+            try? modelContext.save()
         }
     }
 }
@@ -115,7 +126,7 @@ struct RoutineCard: View {
             if !routine.exercises.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
-                        ForEach(routine.exercises.prefix(4), id: \.id) { exercise in
+                        ForEach(routine.orderedExercises.prefix(4), id: \.id) { exercise in
                             HStack(spacing: 4) {
                                 Text(exercise.icon)
                                 Text(ExerciseCatalog.displayName(id: exercise.id, storedName: exercise.name))

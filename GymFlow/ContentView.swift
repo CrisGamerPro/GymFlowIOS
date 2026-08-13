@@ -56,6 +56,12 @@ struct ContentView: View {
             if !hasCompletedOnboarding {
                 showOnboarding = true
             }
+            // Instancia la sesión al arrancar para que quede suscrita a los
+            // botones de la Live Activity, y limpia cualquier Live Activity
+            // que haya quedado viva si la app se cerró a la fuerza.
+            if !ActiveWorkoutSession.shared.isActive {
+                LiveActivityManager.shared.endWorkout()
+            }
         }
         .onChange(of: notificationRouter.pendingRoutineId) { _, newId in
             guard let id = newId else { return }

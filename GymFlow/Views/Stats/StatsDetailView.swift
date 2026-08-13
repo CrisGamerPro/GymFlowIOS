@@ -174,21 +174,7 @@ struct StatsDetailView: View {
     }
 
     private func calculateStreak() -> Int {
-        let calendar = Calendar.current
-        let completedDays = Set(
-            logs.filter { $0.isCompleted }.map { calendar.startOfDay(for: $0.date) }
-        ).sorted(by: >)
-
-        guard !completedDays.isEmpty else { return 0 }
-        var streak = 0
-        var current = calendar.startOfDay(for: Date())
-        for day in completedDays {
-            if day == current {
-                streak += 1
-                current = calendar.date(byAdding: .day, value: -1, to: current)!
-            } else { break }
-        }
-        return streak
+        WorkoutStreak.calculate(from: logs)
     }
 }
 

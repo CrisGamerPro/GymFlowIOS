@@ -145,6 +145,7 @@ struct DataMigrationService {
 
     private static func parseDate(_ dateString: String) -> Date? {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = .current
         return formatter.date(from: dateString)

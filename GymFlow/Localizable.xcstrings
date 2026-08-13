@@ -15,6 +15,9 @@
         }
       }
     },
+    "¡Listo!" : {
+
+    },
     "¿Cómo quieres que te llamemos?" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -26,8 +29,21 @@
         }
       }
     },
+    "¿Quieres una frase más corta?" : {
+
+    },
     "%@ 👋" : {
 
+    },
+    "%@ de %@" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ de %2$@"
+          }
+        }
+      }
     },
     "%@, %@" : {
       "localizations" : {
@@ -76,9 +92,6 @@
         }
       }
     },
-    "%lld por ciento" : {
-
-    },
     "%lld rutinas creadas" : {
 
     },
@@ -91,6 +104,9 @@
           }
         }
       }
+    },
+    "%lld%%" : {
+
     },
     "＋ Nueva Rutina" : {
       "extractionState" : "manual",
@@ -125,9 +141,6 @@
 
     },
     "👋 Hola, %@" : {
-
-    },
-    "💡" : {
 
     },
     "💪" : {
@@ -198,6 +211,9 @@
           }
         }
       }
+    },
+    "Apple exige que estas frases incluyan el nombre de la app." : {
+
     },
     "Así creas tu primera rutina" : {
       "extractionState" : "manual",
@@ -310,6 +326,15 @@
         }
       }
     },
+    "Completas" : {
+
+    },
+    "Completo" : {
+
+    },
+    "Completos" : {
+
+    },
     "Con rutinas" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -345,6 +370,9 @@
           }
         }
       }
+    },
+    "Crea un atajo propio y ponle el nombre que quieras — por ejemplo «Serie». El nombre del atajo es la frase, así que podrás decir solo «Oye Siri, serie»." : {
+
     },
     "Crear mi primera rutina" : {
       "extractionState" : "manual",
@@ -389,6 +417,9 @@
           }
         }
       }
+    },
+    "Día" : {
+
     },
     "Días" : {
       "extractionState" : "manual",
@@ -492,6 +523,9 @@
         }
       }
     },
+    "Empezadas" : {
+
+    },
     "Entendido" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -503,7 +537,13 @@
         }
       }
     },
+    "Entrena sin tocar el teléfono" : {
+
+    },
     "Entrenamiento cancelado." : {
+
+    },
+    "Error al exportar" : {
 
     },
     "Esta semana" : {
@@ -539,6 +579,9 @@
         }
       }
     },
+    "Finalizar entrenamiento" : {
+
+    },
     "Finalizar Entrenamiento" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -549,6 +592,9 @@
           }
         }
       }
+    },
+    "Frases listas para usar" : {
+
     },
     "Guarda y te avisaremos 1 hora antes" : {
       "extractionState" : "manual",
@@ -718,6 +764,12 @@
     "Marca como completada la próxima serie pendiente del entrenamiento activo en GymFlow." : {
 
     },
+    "Marca la próxima serie pendiente sin abrir la app." : {
+
+    },
+    "Marca series con la voz mientras tienes las manos ocupadas." : {
+
+    },
     "Marcar serie" : {
 
     },
@@ -745,6 +797,9 @@
           }
         }
       }
+    },
+    "Modo ordenar — arrastra o usa ↑↓" : {
+
     },
     "No hay un entrenamiento activo en GymFlow." : {
 
@@ -859,6 +914,15 @@
         }
       }
     },
+    "Ordenar ejercicios" : {
+
+    },
+    "Parcial" : {
+
+    },
+    "Parciales" : {
+
+    },
     "Pendiente" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -880,6 +944,18 @@
           }
         }
       }
+    },
+    "Preparándose..." : {
+
+    },
+    "Priorizando: %@" : {
+
+    },
+    "Priorizar" : {
+
+    },
+    "Progreso" : {
+
     },
     "Progreso del entrenamiento" : {
       "extractionState" : "manual",
@@ -914,6 +990,12 @@
         }
       }
     },
+    "Quitar" : {
+
+    },
+    "Quitar prioridad" : {
+
+    },
     "Racha" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -924,6 +1006,12 @@
           }
         }
       }
+    },
+    "Racha 🔥" : {
+
+    },
+    "Recientes" : {
+
     },
     "Recordatorio" : {
       "extractionState" : "manual",
@@ -994,6 +1082,9 @@
     "Serie marcada como completada." : {
 
     },
+    "Serie marcada en %@." : {
+
+    },
     "Series" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1005,7 +1096,13 @@
         }
       }
     },
+    "Series de %@" : {
+
+    },
     "Set marked as completed." : {
+
+    },
+    "Set marked for %@." : {
 
     },
     "Sin ejercicios. Toca \"＋ Agregar\"." : {
@@ -1018,6 +1115,9 @@
           }
         }
       }
+    },
+    "Sin entrenamientos registrados." : {
+
     },
     "Sin rutinas" : {
       "extractionState" : "manual",
@@ -1052,6 +1152,9 @@
         }
       }
     },
+    "Termina el entrenamiento actual y guarda el progreso." : {
+
+    },
     "Terminar" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1062,6 +1165,9 @@
           }
         }
       }
+    },
+    "Terminar de ordenar" : {
+
     },
     "There's no active workout in GymFlow." : {
 
@@ -1142,6 +1248,9 @@
           }
         }
       }
+    },
+    "Últimos %lld días" : {
+
     },
     "Workout canceled." : {
 

@@ -5,6 +5,7 @@ struct HomeView: View {
     @AppStorage("gymflow.userName") private var userName: String = ""
     @Query private var routines: [Routine]
     @Query private var progress: [WorkoutLog]
+    @State private var activeRoutine: Routine?
 
     var body: some View {
         NavigationStack {
@@ -39,7 +40,10 @@ struct HomeView: View {
                             .glassCard()
                         } else {
                             ForEach(todayRoutines) { routine in
-                                NavigationLink(destination: ActiveWorkoutView(routine: routine)) {
+                                // fullScreenCover, no NavigationLink:
+                                // ActiveWorkoutView trae su propio NavigationStack
+                                // y empujarlo generaría dos barras de navegación.
+                                Button(action: { activeRoutine = routine }) {
                                     TodayRoutineCard(routine: routine)
                                 }
                                 .buttonStyle(PlainButtonStyle())
@@ -48,6 +52,9 @@ struct HomeView: View {
                     }
                 }
                 .padding()
+            }
+            .fullScreenCover(item: $activeRoutine) { routine in
+                ActiveWorkoutView(routine: routine)
             }
         }
     }
@@ -58,28 +65,33 @@ struct HomeView: View {
         return routines.filter { $0.days.contains(gymflowWeekday) }
     }
 
-    /// Días consecutivos hacia atrás en los que hay al menos un entrenamiento
-    /// marcado como isCompleted == true.
     private func calculateStreak() -> Int {
+        WorkoutStreak.calculate(from: progress)
+    }
+}
+
+/// Racha = días consecutivos con al menos un entrenamiento completado.
+enum WorkoutStreak {
+    static func calculate(from logs: [WorkoutLog], now: Date = Date()) -> Int {
         let calendar = Calendar.current
         let completedDays = Set(
-            progress
-                .filter { $0.isCompleted }
-                .map { calendar.startOfDay(for: $0.date) }
-        ).sorted(by: >)
-
+            logs.filter { $0.isCompleted }.map { calendar.startOfDay(for: $0.date) }
+        )
         guard !completedDays.isEmpty else { return 0 }
 
-        var streak = 0
-        var currentDay = calendar.startOfDay(for: Date())
+        let today = calendar.startOfDay(for: now)
+        // Si hoy todavía no entrenas, la racha sigue viva hasta que termine
+        // el día: se cuenta desde ayer. Sin esto la racha aparecería en 0
+        // toda la mañana aunque hubieras entrenado ayer.
+        var cursor = completedDays.contains(today)
+            ? today
+            : calendar.date(byAdding: .day, value: -1, to: today) ?? today
 
-        for day in completedDays {
-            if day == currentDay {
-                streak += 1
-                currentDay = calendar.date(byAdding: .day, value: -1, to: currentDay)!
-            } else {
-                break
-            }
+        var streak = 0
+        while completedDays.contains(cursor) {
+            streak += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
+            cursor = previous
         }
         return streak
     }

@@ -1,8 +1,6 @@
 import AppIntents
 
-/// Permite marcar la próxima serie pendiente del entrenamiento activo por voz.
-/// Frases más cortas (sin el nombre de la app) funcionan en iOS 17+ sin ambigüedad.
-/// Para iOS 16, Siri puede pedir confirmación con qué app.
+/// Marca la próxima serie pendiente del entrenamiento activo por voz.
 struct CompleteNextSetIntent: AppIntent {
     static var title: LocalizedStringResource = "Marcar serie completada"
     static var description = IntentDescription(
@@ -20,9 +18,7 @@ struct CompleteNextSetIntent: AppIntent {
             if let idx = ActiveWorkoutSession.shared.prioritizedDisplayIndex,
                let ex = ActiveWorkoutSession.shared.exercise(atDisplayIndex: idx) {
                 let name = ExerciseCatalog.displayName(id: ex.id, storedName: ex.name, language: AppLanguage.current)
-                return .result(dialog: english
-                    ? "Set marked for \(name)."
-                    : "Serie marcada en \(name).")
+                return .result(dialog: english ? "Set marked for \(name)." : "Serie marcada en \(name).")
             }
             return .result(dialog: english ? "Set marked as completed." : "Serie marcada como completada.")
         } else {
@@ -56,30 +52,35 @@ struct CancelWorkoutIntent: AppIntent {
 }
 
 // MARK: - App Shortcuts
+//
+// REGLA DE APPLE: toda frase de un AppShortcut DEBE contener
+// \(.applicationName). Si falta, el build falla con
+// "Invalid Utterance. Every App Shortcut utterance should have one".
+// No hay forma de saltarse esto desde el código.
+//
+// ¿Cómo se consigue entonces una frase corta como "Oye Siri, marca serie"?
+// El usuario crea un Atajo en la app Atajos y le pone ese nombre: el nombre
+// de un atajo ES su frase de invocación, sin el nombre de la app.
+// La app ofrece ese flujo con SiriTipView + ShortcutsLink (ver ProfileView).
+// Todo esto funciona con cuenta de desarrollador gratuita.
 
 struct GymFlowShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: CompleteNextSetIntent(),
             phrases: [
-                // Con nombre de app (máxima compatibilidad)
                 "Marca serie en \(.applicationName)",
                 "Marca la serie en \(.applicationName)",
+                "Marcar serie en \(.applicationName)",
                 "Siguiente serie en \(.applicationName)",
                 "Completar serie en \(.applicationName)",
+                "Serie completada en \(.applicationName)",
+                "Serie hecha en \(.applicationName)",
                 "Anota serie en \(.applicationName)",
                 "Suma serie en \(.applicationName)",
-                "Serie completada en \(.applicationName)",
                 "\(.applicationName), marca serie",
                 "\(.applicationName), siguiente serie",
-
-                // Sin nombre de app (iOS 17+; en iOS 16 Siri puede pedir confirmación)
-                "Marca serie",
-                "Marcar serie",
-                "Serie hecha",
-                "Serie completada",
-                "Siguiente serie",
-                "Anotar serie",
+                "\(.applicationName), serie hecha",
             ],
             shortTitle: "Marcar serie",
             systemImageName: "checkmark.circle.fill"
@@ -90,12 +91,9 @@ struct GymFlowShortcuts: AppShortcutsProvider {
                 "Cancela la rutina en \(.applicationName)",
                 "Cancela el entrenamiento en \(.applicationName)",
                 "Detén el entrenamiento en \(.applicationName)",
+                "Termina la rutina en \(.applicationName)",
                 "\(.applicationName), cancela la rutina",
                 "\(.applicationName), cancela el entrenamiento",
-
-                // Sin nombre de app
-                "Cancela la rutina",
-                "Cancela el entrenamiento",
             ],
             shortTitle: "Cancelar entrenamiento",
             systemImageName: "xmark.circle.fill"

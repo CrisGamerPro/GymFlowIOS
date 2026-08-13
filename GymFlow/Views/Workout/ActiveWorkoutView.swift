@@ -29,6 +29,7 @@ struct ActiveWorkoutView: View {
 
     // Siri tip visibility (shown once per workout after countdown)
     @State private var showSiriTip = false
+    @State private var siriTipVisible = true
 
     var body: some View {
         NavigationStack {
@@ -53,10 +54,10 @@ struct ActiveWorkoutView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    if !showCompleteScreen && !showStartCountdown {
-                        Button("Cancelar") { cancelWorkout() }
-                            .foregroundColor(Theme.textSecondary)
-                    }
+                    Button("Cancelar") { cancelWorkout() }
+                        .foregroundColor(Theme.textSecondary)
+                        .opacity(hideCancelButton ? 0 : 1)
+                        .disabled(hideCancelButton)
                 }
             }
             .toolbarBackground(Theme.background, for: .navigationBar)
@@ -79,6 +80,16 @@ struct ActiveWorkoutView: View {
             .onChange(of: session.wasCanceledExternally) { _, canceled in
                 if canceled { dismiss() }
             }
+            .onChange(of: session.finishRequestedExternally) { _, requested in
+                // Botón "Finalizar" de la Live Activity
+                guard requested else { return }
+                startCountdownTimer?.invalidate()
+                showStartCountdown = false
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    showCompleteScreen = true
+                }
+            }
         }
     }
 
@@ -100,64 +111,20 @@ struct ActiveWorkoutView: View {
             .padding(.bottom, 10)
 
             if !didDismissSiriTip && showSiriTip {
-                SiriTipBanner(onDismiss: { withAnimation { didDismissSiriTip = true } })
+                // Tarjeta nativa: muestra la frase REAL que el sistema
+                // registró para el intent, no una inventada.
+                SiriTipView(intent: CompleteNextSetIntent(), isVisible: $siriTipVisible)
                     .padding(.horizontal)
                     .padding(.bottom, 10)
                     .transition(.opacity.combined(with: .move(edge: .top)))
+                    .onChange(of: siriTipVisible) { _, visible in
+                        if !visible { didDismissSiriTip = true }
+                    }
             }
 
             ScrollView {
                 VStack(spacing: 16) {
-                    let orderCount = session.exerciseOrder.count
-                    let setsCount = session.checkedSets.count
-
-                    if orderCount > 0 && setsCount == orderCount {
-                        ForEach(Array(session.exerciseOrder.enumerated()), id: \.element) { displayIdx, routineIdx in
-                            if routineIdx < routine.exercises.count {
-                                let exercise = routine.exercises[routineIdx]
-                                let isPrioritized = session.prioritizedDisplayIndex == displayIdx
-                                let isDimmed = session.prioritizedDisplayIndex != nil && !isPrioritized
-                                let isFirst = displayIdx == 0
-                                let isLast = displayIdx == orderCount - 1
-
-                                ExerciseCheckRow(
-                                    exercise: exercise,
-                                    checkedSets: $session.checkedSets[displayIdx],
-                                    isPrioritized: isPrioritized,
-                                    isDimmed: isDimmed,
-                                    isReorderMode: session.isReorderMode,
-                                    isFirst: isFirst,
-                                    isLast: isLast,
-                                    onToggleSet: { setIndex in handleSetToggle(exIndex: displayIdx, setIndex: setIndex) },
-                                    onMoveUp: { session.moveExercise(from: displayIdx, to: max(0, displayIdx - 1)) },
-                                    onMoveDown: { session.moveExercise(from: displayIdx, to: min(orderCount - 1, displayIdx + 1)) }
-                                )
-                                .contextMenu {
-                                    Button {
-                                        withAnimation(.spring(response: 0.3)) {
-                                            session.setPriority(displayIndex: displayIdx)
-                                        }
-                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                    } label: {
-                                        let priLabel = isPrioritized ? "Quitar prioridad" : "Priorizar"
-                                        let priIcon = isPrioritized ? "star.slash.fill" : "star.fill"
-                                        Label(priLabel, systemImage: priIcon)
-                                    }
-
-                                    Button {
-                                        withAnimation {
-                                            session.isReorderMode.toggle()
-                                            session.clearPriority()
-                                        }
-                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                    } label: {
-                                        Label(session.isReorderMode ? "Terminar de ordenar" : "Ordenar ejercicios",
-                                              systemImage: "arrow.up.arrow.down")
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    WorkoutExerciseList(session: session)
 
                     Button(action: { showCompleteScreen = true }) {
                         Text("Finalizar Entrenamiento")
@@ -178,7 +145,20 @@ struct ActiveWorkoutView: View {
     // MARK: - Setup
 
     private func setupWorkout() {
-        guard session.routine == nil else { return }
+        // Si ya hay una sesión de ESTA misma rutina (p. ej. se volvió a entrar
+        // a la vista), reengancha el log en vez de arrancar de cero y perderlo.
+        if session.isActive {
+            guard session.isRunning(routineId: routine.id) else {
+                // Hay otro entrenamiento en curso: no lo pisamos.
+                return
+            }
+            if activeLog == nil { activeLog = findOrCreateOpenLog() }
+            showStartCountdown = false
+            startElapsedTimer()
+            showSiriTip = true
+            return
+        }
+
         session.start(routine: routine)
 
         // Log creado inmediatamente al empezar (isCompleted = false)
@@ -207,11 +187,7 @@ struct ActiveWorkoutView: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
                     withAnimation(.easeOut(duration: 0.3)) { showStartCountdown = false }
-                    // Arrancar el timer del tiempo transcurrido
-                    startTime = Date()
-                    elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-                        elapsedTime = Date().timeIntervalSince(startTime)
-                    }
+                    startElapsedTimer()
                     // Mostrar tip de Siri un momento después
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         withAnimation { showSiriTip = true }
@@ -221,12 +197,35 @@ struct ActiveWorkoutView: View {
         }
     }
 
-    // MARK: - Actions
-
-    private func handleSetToggle(exIndex: Int, setIndex: Int) {
-        session.toggleSet(exIndex: exIndex, setIndex: setIndex)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    private func startElapsedTimer() {
+        elapsedTimer?.invalidate()
+        startTime = Date()
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            elapsedTime = Date().timeIntervalSince(startTime)
+        }
     }
+
+    /// Recupera el WorkoutLog abierto de esta rutina (creado al iniciar) o
+    /// crea uno nuevo si se perdió — así "Finalizar" nunca pierde el registro.
+    private func findOrCreateOpenLog() -> WorkoutLog {
+        let routineId = routine.id
+        let descriptor = FetchDescriptor<WorkoutLog>(
+            predicate: #Predicate { $0.routineId == routineId && $0.completedAt == nil },
+            sortBy: [SortDescriptor(\.date, order: .reverse)]
+        )
+        if let existing = try? modelContext.fetch(descriptor).first {
+            return existing
+        }
+        let log = WorkoutLog(
+            routineId: routine.id, routineName: routine.name,
+            date: Date(), startedAt: Date(), isCompleted: false
+        )
+        modelContext.insert(log)
+        try? modelContext.save()
+        return log
+    }
+
+    // MARK: - Actions
 
     private func cancelWorkout() {
         // Borrar el log — no cuenta como "empezada" si se cancela
@@ -246,15 +245,14 @@ struct ActiveWorkoutView: View {
             log.isCompleted = allSetsChecked
 
             for displayIdx in session.exerciseOrder.indices {
-                let routineIdx = session.exerciseOrder[displayIdx]
-                guard routineIdx < routine.exercises.count else { continue }
-                let ex = routine.exercises[routineIdx]
-                let completed = displayIdx < session.checkedSets.count
-                    ? session.checkedSets[displayIdx].filter { $0 }.count : 0
+                guard let ex = session.exercise(atDisplayIndex: displayIdx),
+                      displayIdx < session.checkedSets.count else { continue }
+                let sets = session.checkedSets[displayIdx]
+                let completed = sets.filter { $0 }.count
                 let exLog = ExerciseLog(
                     exerciseId: ex.id, exerciseName: ex.name,
-                    setsCompleted: completed, totalSets: ex.sets,
-                    value: ex.defaultValue, isCompleted: completed == ex.sets
+                    setsCompleted: completed, totalSets: sets.count,
+                    value: ex.defaultValue, isCompleted: completed == sets.count
                 )
                 exLog.workoutLog = log
                 log.exerciseLogs.append(exLog)
@@ -269,11 +267,86 @@ struct ActiveWorkoutView: View {
 
     // MARK: - Helpers
 
+    private var hideCancelButton: Bool {
+        showCompleteScreen || showStartCountdown
+    }
+
     private var priorityExerciseName: String? {
         guard let idx = session.prioritizedDisplayIndex else { return nil }
-        return session.exercise(atDisplayIndex: idx).map {
-            ExerciseCatalog.displayName(id: $0.id, storedName: $0.name)
+        guard let ex = session.exercise(atDisplayIndex: idx) else { return nil }
+        return ExerciseCatalog.displayName(id: ex.id, storedName: ex.name)
+    }
+}
+
+// MARK: - Exercise list (extracted to keep ActiveWorkoutView's body type-checkable)
+
+struct WorkoutExerciseList: View {
+    @ObservedObject var session: ActiveWorkoutSession
+
+    var body: some View {
+        let count = session.exerciseOrder.count
+        let isValid = count > 0 && session.checkedSets.count == count
+
+        Group {
+            if isValid {
+                ForEach(session.exerciseOrder.indices, id: \.self) { displayIdx in
+                    exerciseRow(displayIdx: displayIdx, total: count)
+                }
+            }
         }
+    }
+
+    @ViewBuilder
+    private func exerciseRow(displayIdx: Int, total: Int) -> some View {
+        if let exercise = session.exercise(atDisplayIndex: displayIdx) {
+            let isPrioritized: Bool = session.prioritizedDisplayIndex == displayIdx
+            let isDimmed: Bool = session.prioritizedDisplayIndex != nil && !isPrioritized
+
+            ExerciseCheckRow(
+                exercise: exercise,
+                checkedSets: $session.checkedSets[displayIdx],
+                isPrioritized: isPrioritized,
+                isDimmed: isDimmed,
+                isReorderMode: session.isReorderMode,
+                isFirst: displayIdx == 0,
+                isLast: displayIdx == total - 1,
+                onToggleSet: { setIndex in
+                    session.toggleSet(exIndex: displayIdx, setIndex: setIndex)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                },
+                onMoveUp: { session.moveExercise(from: displayIdx, to: max(0, displayIdx - 1)) },
+                onMoveDown: { session.moveExercise(from: displayIdx, to: min(total - 1, displayIdx + 1)) }
+            )
+            .contextMenu {
+                Button(action: { togglePriority(displayIdx) }) {
+                    Label(
+                        isPrioritized ? "Quitar prioridad" : "Priorizar",
+                        systemImage: isPrioritized ? "star.slash.fill" : "star.fill"
+                    )
+                }
+                Button(action: toggleReorderMode) {
+                    Label(
+                        session.isReorderMode ? "Terminar de ordenar" : "Ordenar ejercicios",
+                        systemImage: "arrow.up.arrow.down"
+                    )
+                }
+            }
+        }
+    }
+
+    private func togglePriority(_ displayIdx: Int) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            session.setPriority(displayIndex: displayIdx)
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func toggleReorderMode() {
+        withAnimation(.easeInOut(duration: 0.25)) {
+            session.isReorderMode.toggle()
+            session.clearPriority()
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 }
 
@@ -401,41 +474,6 @@ struct WorkoutHeaderView: View {
     }
 }
 
-// MARK: - Siri tip banner (replaces old SiriHintBanner)
-
-struct SiriTipBanner: View {
-    let onDismiss: () -> Void
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Text("💡").scaledFont(size: 18).accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Tip: usa tu voz")
-                    .scaledFont(size: 13, weight: .bold)
-                    .foregroundColor(Theme.text)
-                Text("Di «Marca serie» o «Marca serie en GymFlow» para avanzar sin soltar las pesas.")
-                    .scaledFont(size: 13)
-                    .foregroundColor(Theme.textSecondary)
-            }
-            .accessibilityElement(children: .combine)
-
-            Spacer()
-
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .scaledFont(size: 12, weight: .semibold)
-                    .foregroundColor(Theme.textSecondary)
-            }
-            .accessibilityLabel("Cerrar")
-        }
-        .padding(14)
-        .background(Theme.amber.opacity(0.1))
-        .cornerRadius(14)
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.amber.opacity(0.25), lineWidth: 1))
-    }
-}
-
 // MARK: - Exercise check row (with priority, reorder, time-based timer)
 
 struct ExerciseCheckRow: View {
@@ -504,9 +542,12 @@ struct ExerciseCheckRow: View {
                     }
                 } else {
                     let completed = checkedSets.filter { $0 }.count
-                    Text("\(completed)/\(exercise.sets)")
+                    // Usa checkedSets.count, no exercise.sets: si la rutina se
+                    // edita durante el entrenamiento, exercise.sets cambia pero
+                    // checkedSets conserva el tamaño con el que se inició.
+                    Text("\(completed)/\(checkedSets.count)")
                         .scaledFont(size: 14, weight: .bold)
-                        .foregroundColor(completed == exercise.sets ? Theme.green : Theme.textSecondary)
+                        .foregroundColor(completed == checkedSets.count ? Theme.green : Theme.textSecondary)
                         .contentTransition(.numericText())
                         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: completed)
                 }
@@ -515,7 +556,7 @@ struct ExerciseCheckRow: View {
 
             // Set buttons
             HStack(spacing: 12) {
-                ForEach(0..<exercise.sets, id: \.self) { i in
+                ForEach(checkedSets.indices, id: \.self) { i in
                     setButton(index: i)
                 }
             }

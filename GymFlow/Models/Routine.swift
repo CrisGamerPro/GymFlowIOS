@@ -16,7 +16,13 @@ final class Routine {
     
     var createdAt: Date
     var updatedAt: Date
-    
+
+    /// SwiftData NO garantiza el orden del array de una relación. Siempre usa
+    /// esta propiedad cuando el orden importe (entrenamiento, listados, export).
+    var orderedExercises: [Exercise] {
+        exercises.sorted { $0.order < $1.order }
+    }
+
     init(id: UUID = UUID(), name: String, desc: String = "", colorHex: String = "#E8A135", icon: String = "🏋️", days: [Int] = [], time: Date? = nil, exercises: [Exercise] = []) {
         self.id = id
         self.name = name

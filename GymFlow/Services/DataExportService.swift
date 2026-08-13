@@ -74,13 +74,17 @@ final class DataExportService {
     private init() {}
 
     private let iso = ISO8601DateFormatter()
+    // locale POSIX: sin esto, un usuario con calendario budista/árabe
+    // generaría "HH:mm" con dígitos no arábigos y el parseo fallaría.
     private let timeFmt: DateFormatter = {
         let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "HH:mm"
         return f
     }()
     private let fileFmt: DateFormatter = {
         let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
         return f
     }()

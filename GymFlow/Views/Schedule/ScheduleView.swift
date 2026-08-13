@@ -4,6 +4,7 @@ import SwiftData
 struct ScheduleView: View {
     @Query(sort: \Routine.createdAt) private var routines: [Routine]
     @State private var selectedDay: Int = ScheduleView.todayGymFlowWeekday()
+    @State private var activeRoutine: Routine?
     @AppStorage(AppLanguage.storageKey) private var languageCode = AppLanguage.spanish.rawValue
 
     private var language: AppLanguage { AppLanguage(rawValue: languageCode) ?? .spanish }
@@ -37,7 +38,8 @@ struct ScheduleView: View {
                                 .glassCard()
                             } else {
                                 ForEach(dayRoutines) { routine in
-                                    NavigationLink(destination: ActiveWorkoutView(routine: routine)) {
+                                    // fullScreenCover, no NavigationLink: ver HomeView.
+                                    Button(action: { activeRoutine = routine }) {
                                         TodayRoutineCard(routine: routine)
                                     }
                                     .buttonStyle(PlainButtonStyle())
@@ -71,6 +73,9 @@ struct ScheduleView: View {
             .toolbarBackground(Theme.cardBackground, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .fullScreenCover(item: $activeRoutine) { routine in
+                ActiveWorkoutView(routine: routine)
+            }
         }
     }
 
