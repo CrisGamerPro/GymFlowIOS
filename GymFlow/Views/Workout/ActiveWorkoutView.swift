@@ -494,6 +494,7 @@ struct ExerciseCheckRow: View {
     @State private var countdownValue: Int = 3
     @State private var remainingSeconds: Int = 0
     @State private var timerRef: Timer? = nil
+    @State private var showInfo = false
 
     enum TimerPhase { case idle, countdown, running, done }
 
@@ -502,18 +503,38 @@ struct ExerciseCheckRow: View {
         exercise.unit == "min" ? exercise.defaultValue * 60 : exercise.defaultValue
     }
 
+    private var allDone: Bool { checkedSets.allSatisfy { $0 } }
+
+    private var pattern: MovementPattern {
+        ExerciseAnimationCatalog.pattern(forId: exercise.id, category: exercise.category)
+    }
+
+    private var displayName: String {
+        ExerciseCatalog.displayName(id: exercise.id, storedName: exercise.name)
+    }
+
+    /// La animación se pausa cuando el ejercicio ya está completo o cuando la
+    /// fila está atenuada por prioridad — no tiene sentido gastar frames ahí.
+    private var animationPlaying: Bool {
+        !allDone && !isDimmed && !isReorderMode
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.white.opacity(0.1))
-                        .frame(width: 36, height: 36)
-                    Text(exercise.icon).scaledFont(size: 18)
+                Button(action: { showInfo = true }) {
+                    ExerciseAnimationTile(
+                        pattern: pattern,
+                        size: 44,
+                        tint: allDone ? Theme.green : Theme.amber,
+                        isPlaying: animationPlaying
+                    )
                 }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel("Cómo se hace \(displayName)")
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(ExerciseCatalog.displayName(id: exercise.id, storedName: exercise.name))
+                    Text(displayName)
                         .scaledFont(size: 16, weight: .bold)
                         .foregroundColor(Theme.text)
                     Text("\(exercise.defaultValue) \(ExerciseCatalog.displayUnit(exercise.unit))")
@@ -572,6 +593,9 @@ struct ExerciseCheckRow: View {
         .animation(.easeInOut(duration: 0.25), value: isDimmed)
         .animation(.easeInOut(duration: 0.25), value: isPrioritized)
         .onDisappear { timerRef?.invalidate() }
+        .sheet(isPresented: $showInfo) {
+            ExerciseInfoSheet(exercise: exercise)
+        }
     }
 
     @ViewBuilder

@@ -6,6 +6,7 @@ struct ExercisePickerView: View {
     
     @State private var searchText = ""
     @State private var selectedCategory = "Todos"
+    @State private var infoExercise: CatalogExercise?
     
     let categories = ExerciseCatalog.categories
 
@@ -76,52 +77,17 @@ struct ExercisePickerView: View {
                     ScrollView {
                         LazyVStack(spacing: 8) {
                             ForEach(filteredExercises) { catEx in
-                                let isPicked = selectedExercises.contains(where: { $0.id == catEx.id })
-                                
-                                HStack(spacing: 12) {
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 8)
-                                            .fill(Color(hex: "#2C2C2E"))
-                                            .frame(width: 38, height: 38)
-                                        Text(catEx.icon)
-                                            .scaledFont(size: 20)
-                                    }
-                                    
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(ExerciseCatalog.displayName(id: catEx.id, storedName: catEx.name))
-                                            .scaledFont(size: 15, weight: .bold)
-                                            .foregroundColor(Theme.text)
-                                        Text(ExerciseCatalog.displayCategory(catEx.category))
-                                            .scaledFont(size: 12)
-                                            .foregroundColor(Theme.textSecondary)
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    if isPicked {
-                                        Image(systemName: "checkmark")
-                                            .scaledFont(size: 18, weight: .bold)
-                                            .foregroundColor(Theme.green)
-                                    }
-                                }
-                                .padding(12)
-                                .background(isPicked ? Theme.green.opacity(0.1) : Color(hex: "#1C1C1E"))
-                                .cornerRadius(12)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(isPicked ? Theme.green.opacity(0.3) : Color(hex: "#3A3A3C"), lineWidth: 1)
+                                ExercisePickerRow(
+                                    catalogExercise: catEx,
+                                    isPicked: selectedExercises.contains { $0.id == catEx.id },
+                                    onToggle: {
+                                        withAnimation(.easeInOut(duration: 0.15)) {
+                                            toggleSelection(for: catEx)
+                                        }
+                                    },
+                                    onInfo: { infoExercise = catEx }
                                 )
                                 .padding(.horizontal)
-                                .animation(.easeInOut(duration: 0.15), value: isPicked)
-                                .onTapGesture {
-                                    withAnimation(.easeInOut(duration: 0.15)) {
-                                        toggleSelection(for: catEx)
-                                    }
-                                }
-                                .accessibilityElement(children: .ignore)
-                                .accessibilityLabel("\(ExerciseCatalog.displayName(id: catEx.id, storedName: catEx.name)), \(ExerciseCatalog.displayCategory(catEx.category))")
-                                .accessibilityAddTraits(.isButton)
-                                .accessibilityValue(isPicked ? "Seleccionado" : "")
                             }
                         }
                         .padding(.vertical)
@@ -139,6 +105,9 @@ struct ExercisePickerView: View {
             .toolbarBackground(Theme.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
+            .sheet(item: $infoExercise) { catEx in
+                ExerciseInfoSheet(catalog: catEx)
+            }
         }
     }
     
@@ -158,5 +127,81 @@ struct ExercisePickerView: View {
             )
             selectedExercises.append(newEx)
         }
+    }
+}
+
+// MARK: - Fila del selector
+
+struct ExercisePickerRow: View {
+    let catalogExercise: CatalogExercise
+    let isPicked: Bool
+    let onToggle: () -> Void
+    let onInfo: () -> Void
+
+    private var pattern: MovementPattern {
+        ExerciseAnimationCatalog.pattern(
+            forId: catalogExercise.id,
+            category: catalogExercise.category
+        )
+    }
+
+    private var displayName: String {
+        ExerciseCatalog.displayName(id: catalogExercise.id, storedName: catalogExercise.name)
+    }
+
+    private var displayCategory: String {
+        ExerciseCatalog.displayCategory(catalogExercise.category)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // La animación reemplaza al emoji: se ve el movimiento antes de elegir.
+            ExerciseAnimationTile(
+                pattern: pattern,
+                size: 44,
+                tint: isPicked ? Theme.green : Theme.amber
+            )
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayName)
+                    .scaledFont(size: 15, weight: .bold)
+                    .foregroundColor(Theme.text)
+                Text(displayCategory)
+                    .scaledFont(size: 12)
+                    .foregroundColor(Theme.textSecondary)
+            }
+
+            Spacer()
+
+            if isPicked {
+                Image(systemName: "checkmark")
+                    .scaledFont(size: 18, weight: .bold)
+                    .foregroundColor(Theme.green)
+                    .accessibilityHidden(true)
+            }
+
+            Button(action: onInfo) {
+                Image(systemName: "info.circle")
+                    .scaledFont(size: 20)
+                    .foregroundColor(Theme.blue)
+                    .padding(.leading, 4)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Cómo se hace \(displayName)")
+        }
+        .padding(12)
+        .background(isPicked ? Theme.green.opacity(0.1) : Color(hex: "#1C1C1E"))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isPicked ? Theme.green.opacity(0.3) : Color(hex: "#3A3A3C"), lineWidth: 1)
+        )
+        .animation(.easeInOut(duration: 0.15), value: isPicked)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onToggle)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(displayName), \(displayCategory)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityValue(isPicked ? "Seleccionado" : "")
     }
 }

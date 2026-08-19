@@ -330,17 +330,22 @@ struct ExerciseRowEdit: View {
     @Binding var exercise: Exercise
     var onRemove: () -> Void
 
+    @State private var showInfo = false
+
+    private var pattern: MovementPattern {
+        ExerciseAnimationCatalog.pattern(forId: exercise.id, category: exercise.category)
+    }
+
     var body: some View {
         HStack(spacing: 12) {
-            // Icon — leave space on left for the drag handle overlay
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(hex: "#2C2C2E"))
-                    .frame(width: 36, height: 36)
-                Text(exercise.icon)
-                    .scaledFont(size: 18)
+            // Toca la animación para ver la ficha del ejercicio.
+            // Va desplazada a la derecha para no chocar con el asa de arrastre.
+            Button(action: { showInfo = true }) {
+                ExerciseAnimationTile(pattern: pattern, size: 38)
             }
-            .padding(.leading, 18)  // offset so drag handle doesn't overlap icon
+            .buttonStyle(PlainButtonStyle())
+            .padding(.leading, 18)
+            .accessibilityLabel("Cómo se hace \(exerciseDisplayName)")
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(ExerciseCatalog.displayName(id: exercise.id, storedName: exercise.name))
@@ -402,6 +407,9 @@ struct ExerciseRowEdit: View {
         .background(Color(hex: "#1C1C1E"))
         .cornerRadius(12)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#3A3A3C"), lineWidth: 1))
+        .sheet(isPresented: $showInfo) {
+            ExerciseInfoSheet(exercise: exercise)
+        }
     }
 
     private var exerciseDisplayName: String {
