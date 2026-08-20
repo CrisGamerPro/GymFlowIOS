@@ -156,12 +156,14 @@ struct RoutineEditorView: View {
         icon = routine.icon
         days = Set(routine.days)
         if let t = routine.time { time = t; hasTime = true } else { hasTime = false }
-        exercises = routine.exercises.sorted { $0.order < $1.order }.map { ex in
+        exercises = routine.orderedExercises.map { ex in
             Exercise(id: ex.id, name: ex.name, icon: ex.icon, category: ex.category,
-                     unit: ex.unit, sets: ex.sets, defaultValue: ex.defaultValue, order: ex.order)
+                     unit: ex.unit, sets: ex.sets, defaultValue: ex.defaultValue, order: ex.order,
+                     defaultWeight: ex.defaultWeight, restSeconds: ex.restSeconds)
         }
     }
 
+    @MainActor
     private func saveRoutine() {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return }
 
@@ -183,8 +185,10 @@ struct RoutineEditorView: View {
             ex.order = i
             ex.routine = routine
             routine.exercises.append(ex)
+            modelContext.insert(ex)
         }
         try? modelContext.save()
+        WidgetSnapshotService.refresh(context: modelContext)
 
         if routine.time != nil && !routine.days.isEmpty {
             NotificationService.shared.requestPermission { granted in
@@ -337,6 +341,21 @@ struct ExerciseRowEdit: View {
     }
 
     var body: some View {
+        VStack(spacing: 10) {
+            topRow
+            fieldsRow
+        }
+        .padding(12)
+        .background(Color(hex: "#1C1C1E"))
+        .cornerRadius(12)
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#3A3A3C"), lineWidth: 1))
+        .sheet(isPresented: $showInfo) {
+            ExerciseInfoSheet(exercise: exercise)
+        }
+    }
+
+    /// Nombre, animación y botón de eliminar.
+    private var topRow: some View {
         HStack(spacing: 12) {
             // Toca la animación para ver la ficha del ejercicio.
             // Va desplazada a la derecha para no chocar con el asa de arrastre.
@@ -348,68 +367,84 @@ struct ExerciseRowEdit: View {
             .accessibilityLabel("Cómo se hace \(exerciseDisplayName)")
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(ExerciseCatalog.displayName(id: exercise.id, storedName: exercise.name))
+                Text(exerciseDisplayName)
                     .scaledFont(size: 15, weight: .bold)
                     .foregroundColor(Theme.text)
-                Text("\(exercise.sets) \(setsWord) × \(exercise.defaultValue) \(ExerciseCatalog.displayUnit(exercise.unit))")
+                Text(summary)
                     .scaledFont(size: 12)
                     .foregroundColor(Theme.textSecondary)
             }
 
             Spacer()
 
-            HStack(spacing: 6) {
-                VStack(spacing: 2) {
-                    Text("Series")
-                        .scaledFont(size: 9)
-                        .foregroundColor(Theme.textSecondary)
-                    TextField("", value: $exercise.sets, formatter: NumberFormatter())
-                        .keyboardType(.numberPad)
-                        .multilineTextAlignment(.center)
-                        .frame(width: 36)
-                        .padding(.vertical, 4)
-                        .background(Color(hex: "#2C2C2E"))
-                        .cornerRadius(6)
-                        .foregroundColor(Theme.text)
-                        .accessibilityLabel("Series de \(exerciseDisplayName)")
-                }
-
-                Text("×")
-                    .foregroundColor(Theme.textSecondary)
-                    .scaledFont(size: 12)
-                    .accessibilityHidden(true)
-
-                VStack(spacing: 2) {
-                    Text(ExerciseCatalog.displayUnit(exercise.unit).capitalized)
-                        .scaledFont(size: 9)
-                        .foregroundColor(Theme.textSecondary)
-                    TextField("", value: $exercise.defaultValue, formatter: NumberFormatter())
-                        .keyboardType(.numberPad)
-                        .multilineTextAlignment(.center)
-                        .frame(width: 44)
-                        .padding(.vertical, 4)
-                        .background(Color(hex: "#2C2C2E"))
-                        .cornerRadius(6)
-                        .foregroundColor(Theme.text)
-                        .accessibilityLabel("\(ExerciseCatalog.displayUnit(exercise.unit)) de \(exerciseDisplayName)")
-                }
-
-                Button(action: onRemove) {
-                    Image(systemName: "xmark")
-                        .scaledFont(size: 16, weight: .bold)
-                        .foregroundColor(Theme.red)
-                        .padding(.leading, 8)
-                }
-                .accessibilityLabel("Eliminar \(exerciseDisplayName)")
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .scaledFont(size: 16, weight: .bold)
+                    .foregroundColor(Theme.red)
+                    .padding(6)
             }
+            .accessibilityLabel("Eliminar \(exerciseDisplayName)")
         }
-        .padding(12)
-        .background(Color(hex: "#1C1C1E"))
-        .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#3A3A3C"), lineWidth: 1))
-        .sheet(isPresented: $showInfo) {
-            ExerciseInfoSheet(exercise: exercise)
+    }
+
+    /// Series, valor, peso objetivo y descanso.
+    private var fieldsRow: some View {
+        HStack(spacing: 8) {
+            field(label: "Series", width: 42) {
+                TextField("", value: $exercise.sets, format: .number)
+                    .accessibilityLabel("Series de \(exerciseDisplayName)")
+            }
+
+            field(label: ExerciseCatalog.displayUnit(exercise.unit).capitalized, width: 48) {
+                TextField("", value: $exercise.defaultValue, format: .number)
+                    .accessibilityLabel("\(ExerciseCatalog.displayUnit(exercise.unit)) de \(exerciseDisplayName)")
+            }
+
+            if exercise.usesWeight {
+                field(label: "Kg", width: 52) {
+                    TextField("0", value: $exercise.defaultWeight,
+                              format: .number.precision(.fractionLength(0...1)))
+                        .accessibilityLabel("Peso objetivo de \(exerciseDisplayName)")
+                }
+            }
+
+            field(label: restLabel, width: 52) {
+                // 0 = usar el descanso global de Ajustes; el placeholder lo dice.
+                TextField(defaultRestPlaceholder, value: $exercise.restSeconds, format: .number)
+                    .accessibilityLabel("Descanso en segundos de \(exerciseDisplayName)")
+            }
+
+            Spacer(minLength: 0)
         }
+    }
+
+    private func field<Content: View>(label: String, width: CGFloat,
+                                      @ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 2) {
+            Text(label)
+                .scaledFont(size: 9)
+                .foregroundColor(Theme.textSecondary)
+            content()
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.center)
+                .scaledFont(size: 14, weight: .semibold)
+                .foregroundColor(Theme.text)
+                .frame(width: width)
+                .padding(.vertical, 5)
+                .background(Color(hex: "#2C2C2E"))
+                .cornerRadius(7)
+        }
+    }
+
+    private var summary: String {
+        var parts = ["\(exercise.sets) \(setsWord) × \(exercise.defaultValue) \(ExerciseCatalog.displayUnit(exercise.unit))"]
+        if exercise.usesWeight, exercise.defaultWeight > 0 {
+            let w = exercise.defaultWeight == exercise.defaultWeight.rounded()
+                ? String(Int(exercise.defaultWeight))
+                : String(format: "%.1f", exercise.defaultWeight)
+            parts.append("\(w) kg")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var exerciseDisplayName: String {
@@ -418,5 +453,13 @@ struct ExerciseRowEdit: View {
 
     private var setsWord: String {
         AppLanguage.current == .english ? "sets" : "series"
+    }
+
+    private var restLabel: String {
+        AppLanguage.current == .english ? "Rest s" : "Desc. s"
+    }
+
+    private var defaultRestPlaceholder: String {
+        String(ActiveWorkoutSession.globalDefaultRest)
     }
 }

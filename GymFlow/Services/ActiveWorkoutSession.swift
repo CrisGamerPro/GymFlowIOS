@@ -7,6 +7,16 @@ import Combine
 final class ActiveWorkoutSession: ObservableObject {
     static let shared = ActiveWorkoutSession()
 
+    /// Descanso por defecto cuando el ejercicio no define uno propio.
+    /// `nonisolated` porque lo leen @AppStorage y vistas fuera del actor —
+    /// UserDefaults es seguro entre hilos, no hace falta aislarlo.
+    nonisolated static let defaultRestKey = "gymflow.defaultRestSeconds"
+
+    nonisolated static var globalDefaultRest: Int {
+        let stored = UserDefaults.standard.integer(forKey: defaultRestKey)
+        return stored > 0 ? stored : 90
+    }
+
     @Published private(set) var routine: Routine?
 
     /// Snapshot de los ejercicios EN ORDEN, tomado al iniciar. Se guarda aquí
@@ -14,45 +24,44 @@ final class ActiveWorkoutSession: ObservableObject {
     /// SwiftData no garantiza orden y puede cambiar si se edita la rutina.
     @Published private(set) var exercises: [Exercise] = []
 
-    /// checkedSets[displayIndex][setIndex] — SIEMPRE indexado por posición de
-    /// pantalla, no por posición original en la rutina.
+    /// Todos los arrays siguientes están indexados por POSICIÓN DE PANTALLA,
+    /// no por posición original en la rutina, y se reordenan juntos.
     @Published var checkedSets: [[Bool]] = []
+    @Published var setWeights: [[Double]] = []
+    @Published var setReps: [[Int]] = []
 
-    /// Mapeo de posición de pantalla → índice en `exercises`.
+    /// Mapeo posición de pantalla → índice en `exercises`.
     @Published private(set) var exerciseOrder: [Int] = []
 
-    /// Índice de pantalla del ejercicio priorizado, o nil si no hay prioridad.
     @Published private(set) var prioritizedDisplayIndex: Int? = nil
-
-    /// Cuando es true, cada fila muestra botones ↑ ↓ para reordenar.
     @Published var isReorderMode: Bool = false
 
     @Published private(set) var didCompleteAll = false
     @Published private(set) var wasCanceledExternally = false
-
-    /// Se pone en true cuando se pide finalizar desde la Live Activity.
-    /// ActiveWorkoutView lo observa para guardar el log y cerrarse.
     @Published private(set) var finishRequestedExternally = false
 
+    // MARK: Descanso entre series
+
+    @Published private(set) var restRemaining: Int = 0
+    @Published private(set) var restTotal: Int = 0
+    private var restTimer: Timer?
+
+    var isResting: Bool { restRemaining > 0 }
+
     private init() {
-        // Botones de la Live Activity (los intents corren en este proceso).
         NotificationCenter.default.addObserver(
             forName: .gymflowMarkSetRequested, object: nil, queue: .main
         ) { _ in
-            Task { @MainActor in
-                ActiveWorkoutSession.shared.completeNextPendingSet()
-            }
+            Task { @MainActor in ActiveWorkoutSession.shared.completeNextPendingSet() }
         }
         NotificationCenter.default.addObserver(
             forName: .gymflowFinishWorkoutRequested, object: nil, queue: .main
         ) { _ in
-            Task { @MainActor in
-                ActiveWorkoutSession.shared.requestFinishFromLiveActivity()
-            }
+            Task { @MainActor in ActiveWorkoutSession.shared.requestFinishFromLiveActivity() }
         }
     }
 
-    // MARK: - Derived
+    // MARK: - Derivados
 
     var isActive: Bool { routine != nil }
 
@@ -62,6 +71,17 @@ final class ActiveWorkoutSession: ObservableObject {
         return Double(all.filter { $0 }.count) / Double(all.count)
     }
 
+    /// Volumen acumulado en la sesión (Σ kg × reps de las series marcadas).
+    var sessionVolume: Double {
+        var total: Double = 0
+        for i in checkedSets.indices {
+            for j in checkedSets[i].indices where checkedSets[i][j] {
+                total += weight(exIndex: i, setIndex: j) * Double(reps(exIndex: i, setIndex: j))
+            }
+        }
+        return total
+    }
+
     func exercise(atDisplayIndex i: Int) -> Exercise? {
         guard exerciseOrder.indices.contains(i) else { return nil }
         let idx = exerciseOrder[i]
@@ -69,25 +89,44 @@ final class ActiveWorkoutSession: ObservableObject {
         return exercises[idx]
     }
 
-    /// ¿Este entrenamiento activo pertenece a esta rutina?
-    func isRunning(routineId: UUID) -> Bool {
-        routine?.id == routineId
+    func isRunning(routineId: UUID) -> Bool { routine?.id == routineId }
+
+    func weight(exIndex: Int, setIndex: Int) -> Double {
+        guard setWeights.indices.contains(exIndex),
+              setWeights[exIndex].indices.contains(setIndex) else { return 0 }
+        return setWeights[exIndex][setIndex]
     }
 
-    // MARK: - Lifecycle
+    func reps(exIndex: Int, setIndex: Int) -> Int {
+        guard setReps.indices.contains(exIndex),
+              setReps[exIndex].indices.contains(setIndex) else { return 0 }
+        return setReps[exIndex][setIndex]
+    }
 
-    func start(routine: Routine) {
+    // MARK: - Ciclo de vida
+
+    /// `prefillWeights` viene de PersonalRecordService: último peso usado por
+    /// id de ejercicio. Si la rutina no declara peso, se precarga ese.
+    func start(routine: Routine, prefillWeights: [String: Double] = [:]) {
         let ordered = routine.orderedExercises
 
         self.routine = routine
         self.exercises = ordered
         self.exerciseOrder = Array(ordered.indices)
         self.checkedSets = ordered.map { Array(repeating: false, count: max(1, $0.sets)) }
+        self.setWeights = ordered.map { ex in
+            let w = ex.defaultWeight > 0 ? ex.defaultWeight : (prefillWeights[ex.id] ?? 0)
+            return Array(repeating: ex.usesWeight ? w : 0, count: max(1, ex.sets))
+        }
+        self.setReps = ordered.map { ex in
+            Array(repeating: ex.defaultValue, count: max(1, ex.sets))
+        }
         self.prioritizedDisplayIndex = nil
         self.isReorderMode = false
         self.didCompleteAll = false
         self.wasCanceledExternally = false
         self.finishRequestedExternally = false
+        cancelRest()
 
         if let firstEx = ordered.first {
             LiveActivityManager.shared.startWorkout(
@@ -102,11 +141,14 @@ final class ActiveWorkoutSession: ObservableObject {
         routine = nil
         exercises = []
         checkedSets = []
+        setWeights = []
+        setReps = []
         exerciseOrder = []
         prioritizedDisplayIndex = nil
         isReorderMode = false
         didCompleteAll = false
         finishRequestedExternally = false
+        cancelRest()
     }
 
     @discardableResult
@@ -118,21 +160,40 @@ final class ActiveWorkoutSession: ObservableObject {
         return true
     }
 
-    /// Pedido de "Finalizar" desde la Live Activity. No guarda nada aquí —
-    /// solo levanta la bandera; ActiveWorkoutView es quien tiene el
-    /// ModelContext y persiste el WorkoutLog.
     func requestFinishFromLiveActivity() {
         guard routine != nil else { return }
         finishRequestedExternally = true
     }
 
-    // MARK: - Set toggling
+    // MARK: - Edición de series
+
+    func setWeight(_ value: Double, exIndex: Int, setIndex: Int) {
+        guard setWeights.indices.contains(exIndex),
+              setWeights[exIndex].indices.contains(setIndex) else { return }
+        setWeights[exIndex][setIndex] = max(0, value)
+    }
+
+    func setRepCount(_ value: Int, exIndex: Int, setIndex: Int) {
+        guard setReps.indices.contains(exIndex),
+              setReps[exIndex].indices.contains(setIndex) else { return }
+        setReps[exIndex][setIndex] = max(0, value)
+    }
+
+    /// Aplica un peso a TODAS las series pendientes del ejercicio. Es lo que
+    /// se espera al ajustar la carga a mitad de un ejercicio.
+    func applyWeightToRemaining(_ value: Double, exIndex: Int, fromSet: Int) {
+        guard setWeights.indices.contains(exIndex) else { return }
+        for j in setWeights[exIndex].indices where j >= fromSet && !checkedSets[exIndex][j] {
+            setWeights[exIndex][j] = max(0, value)
+        }
+    }
 
     func toggleSet(exIndex: Int, setIndex: Int) {
         guard checkedSets.indices.contains(exIndex),
               checkedSets[exIndex].indices.contains(setIndex) else { return }
+        let willComplete = !checkedSets[exIndex][setIndex]
         checkedSets[exIndex][setIndex].toggle()
-        afterChange(displayIndex: exIndex)
+        afterChange(displayIndex: exIndex, didComplete: willComplete)
     }
 
     /// Marca la próxima serie pendiente. Si hay un ejercicio priorizado, lo
@@ -150,39 +211,42 @@ final class ActiveWorkoutSession: ObservableObject {
         for displayIdx in searchOrder {
             if let setIndex = checkedSets[displayIdx].firstIndex(where: { !$0 }) {
                 checkedSets[displayIdx][setIndex] = true
-                afterChange(displayIndex: displayIdx)
+                afterChange(displayIndex: displayIdx, didComplete: true)
                 return true
             }
         }
         return false
     }
 
-    // MARK: - Priority
+    // MARK: - Prioridad
 
     func setPriority(displayIndex: Int) {
         prioritizedDisplayIndex = (prioritizedDisplayIndex == displayIndex) ? nil : displayIndex
     }
 
-    func clearPriority() {
-        prioritizedDisplayIndex = nil
-    }
+    func clearPriority() { prioritizedDisplayIndex = nil }
 
-    // MARK: - Reorder
+    // MARK: - Reordenar
 
-    /// Mueve el ejercicio de `from` a `to` (índices de pantalla).
-    /// Mantiene checkedSets sincronizado con exerciseOrder.
+    /// Mueve el ejercicio de `from` a `to` (índices de pantalla), manteniendo
+    /// series, pesos y reps sincronizados.
     func moveExercise(from: Int, to: Int) {
         guard from != to,
-              exerciseOrder.indices.contains(from),
-              exerciseOrder.indices.contains(to),
-              checkedSets.indices.contains(from),
-              checkedSets.indices.contains(to) else { return }
+              exerciseOrder.indices.contains(from), exerciseOrder.indices.contains(to),
+              checkedSets.indices.contains(from), checkedSets.indices.contains(to),
+              setWeights.indices.contains(from), setReps.indices.contains(from) else { return }
 
         let orderElem = exerciseOrder.remove(at: from)
         exerciseOrder.insert(orderElem, at: to)
 
         let setsElem = checkedSets.remove(at: from)
         checkedSets.insert(setsElem, at: to)
+
+        let weightsElem = setWeights.remove(at: from)
+        setWeights.insert(weightsElem, at: to)
+
+        let repsElem = setReps.remove(at: from)
+        setReps.insert(repsElem, at: to)
 
         if let pri = prioritizedDisplayIndex {
             if pri == from {
@@ -195,13 +259,57 @@ final class ActiveWorkoutSession: ObservableObject {
         }
     }
 
-    // MARK: - Private
+    // MARK: - Descanso
 
-    private func afterChange(displayIndex: Int) {
+    func startRest(seconds: Int) {
+        guard seconds > 0 else { return }
+        restTimer?.invalidate()
+        restTotal = seconds
+        restRemaining = seconds
+        restTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] t in
+            Task { @MainActor in
+                guard let self else { t.invalidate(); return }
+                if self.restRemaining > 1 {
+                    self.restRemaining -= 1
+                } else {
+                    t.invalidate()
+                    self.restTimer = nil
+                    self.restRemaining = 0
+                    NotificationService.shared.notifyRestFinished()
+                }
+            }
+        }
+    }
+
+    func skipRest() { cancelRest() }
+
+    func addRestTime(_ seconds: Int) {
+        guard isResting else { return }
+        restRemaining += seconds
+        restTotal = max(restTotal, restRemaining)
+    }
+
+    private func cancelRest() {
+        restTimer?.invalidate()
+        restTimer = nil
+        restRemaining = 0
+        restTotal = 0
+    }
+
+    /// Segundos de descanso que corresponden a un ejercicio.
+    func restSeconds(forDisplayIndex i: Int) -> Int {
+        guard let ex = exercise(atDisplayIndex: i) else { return Self.globalDefaultRest }
+        return ex.restSeconds > 0 ? ex.restSeconds : Self.globalDefaultRest
+    }
+
+    // MARK: - Privado
+
+    private func afterChange(displayIndex: Int, didComplete: Bool) {
         guard let ex = exercise(atDisplayIndex: displayIndex),
               checkedSets.indices.contains(displayIndex) else { return }
 
         let completed = checkedSets[displayIndex].filter { $0 }.count
+        let allDone = checkedSets.flatMap({ $0 }).allSatisfy({ $0 })
 
         LiveActivityManager.shared.updateProgress(
             exerciseName: ex.name,
@@ -210,8 +318,11 @@ final class ActiveWorkoutSession: ObservableObject {
             progress: progressPercent
         )
 
-        if checkedSets.flatMap({ $0 }).allSatisfy({ $0 }) {
+        if allDone {
             didCompleteAll = true
+            cancelRest()   // no tiene sentido descansar si ya terminaste
+        } else if didComplete {
+            startRest(seconds: restSeconds(forDisplayIndex: displayIndex))
         }
     }
 }

@@ -62,6 +62,9 @@ struct ContentView: View {
             if !ActiveWorkoutSession.shared.isActive {
                 LiveActivityManager.shared.endWorkout()
             }
+            // El widget necesita datos frescos: el día pudo cambiar mientras
+            // la app estaba cerrada, así que las rutinas de "hoy" son otras.
+            WidgetSnapshotService.refresh(context: modelContext)
         }
         .onChange(of: notificationRouter.pendingRoutineId) { _, newId in
             guard let id = newId else { return }

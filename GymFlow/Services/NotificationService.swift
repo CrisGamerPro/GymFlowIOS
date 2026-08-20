@@ -45,6 +45,26 @@ class NotificationService {
         }
     }
 
+    /// Aviso de fin de descanso. Se dispara al instante (intervalo mínimo de
+    /// 1 s porque UNTimeIntervalNotificationTrigger no acepta 0) y solo se
+    /// oye si la app está en segundo plano — en primer plano el usuario ya ve
+    /// la barra de descanso, así que no hace falta molestarlo.
+    func notifyRestFinished() {
+        let english = AppLanguage.current == .english
+        let content = UNMutableNotificationContent()
+        content.title = english ? "Rest over 💥" : "Descanso terminado 💥"
+        content.body = english ? "Next set — let's go." : "Siguiente serie — vamos."
+        content.sound = .default
+        content.interruptionLevel = .timeSensitive
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: "gymflow.rest.\(UUID().uuidString)",
+            content: content, trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
+
     /// Reprograma una notificación 15 minutos en el futuro, conservando su contenido.
     func snoozeNotification(originalContent: UNNotificationContent) {
         let content = UNMutableNotificationContent()

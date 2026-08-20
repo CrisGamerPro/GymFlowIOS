@@ -31,6 +31,10 @@ struct BackupExercise: Codable {
     var sets: Int
     var defaultValue: Int
     var order: Int
+    // Agregados con el registro de carga. Opcionales para poder leer
+    // backups v2 hechos antes de esa función.
+    var defaultWeight: Double?
+    var restSeconds: Int?
 }
 
 struct BackupWorkoutLog: Codable {
@@ -50,6 +54,14 @@ struct BackupExerciseLog: Codable {
     var setsCompleted: Int
     var totalSets: Int
     var value: Int
+    var isCompleted: Bool
+    /// Detalle serie a serie. Opcional: los backups anteriores no lo traen.
+    var setRecords: [BackupSetRecord]?
+}
+
+struct BackupSetRecord: Codable {
+    var weight: Double
+    var reps: Int
     var isCompleted: Bool
 }
 
@@ -95,9 +107,11 @@ final class DataExportService {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
 
         let backupRoutines = routines.map { r -> BackupRoutine in
-            let exs = r.exercises.sorted { $0.order < $1.order }.map { ex -> BackupExercise in
+            let exs = r.orderedExercises.map { ex -> BackupExercise in
                 BackupExercise(id: ex.id, name: ex.name, icon: ex.icon, category: ex.category,
-                               unit: ex.unit, sets: ex.sets, defaultValue: ex.defaultValue, order: ex.order)
+                               unit: ex.unit, sets: ex.sets, defaultValue: ex.defaultValue,
+                               order: ex.order, defaultWeight: ex.defaultWeight,
+                               restSeconds: ex.restSeconds)
             }
             return BackupRoutine(
                 id: r.id.uuidString, name: r.name, desc: r.desc, colorHex: r.colorHex,
@@ -109,9 +123,14 @@ final class DataExportService {
 
         let backupLogs = logs.map { log -> BackupWorkoutLog in
             let exLogs = log.exerciseLogs.map { el -> BackupExerciseLog in
-                BackupExerciseLog(exerciseId: el.exerciseId, exerciseName: el.exerciseName,
-                                  setsCompleted: el.setsCompleted, totalSets: el.totalSets,
-                                  value: el.value, isCompleted: el.isCompleted)
+                BackupExerciseLog(
+                    exerciseId: el.exerciseId, exerciseName: el.exerciseName,
+                    setsCompleted: el.setsCompleted, totalSets: el.totalSets,
+                    value: el.value, isCompleted: el.isCompleted,
+                    setRecords: el.setRecords.map {
+                        BackupSetRecord(weight: $0.weight, reps: $0.reps, isCompleted: $0.isCompleted)
+                    }
+                )
             }
             return BackupWorkoutLog(
                 id: log.id.uuidString, routineId: log.routineId.uuidString,
@@ -169,7 +188,8 @@ final class DataExportService {
             for bex in br.exercises.sorted(by: { $0.order < $1.order }) {
                 let ex = Exercise(
                     id: bex.id, name: bex.name, icon: bex.icon, category: bex.category,
-                    unit: bex.unit, sets: bex.sets, defaultValue: bex.defaultValue, order: bex.order
+                    unit: bex.unit, sets: bex.sets, defaultValue: bex.defaultValue, order: bex.order,
+                    defaultWeight: bex.defaultWeight ?? 0, restSeconds: bex.restSeconds ?? 0
                 )
                 ex.routine = routine
                 routine.exercises.append(ex)
@@ -194,7 +214,10 @@ final class DataExportService {
                 let exLog = ExerciseLog(
                     exerciseId: bel.exerciseId, exerciseName: bel.exerciseName,
                     setsCompleted: bel.setsCompleted, totalSets: bel.totalSets,
-                    value: bel.value, isCompleted: bel.isCompleted
+                    value: bel.value, isCompleted: bel.isCompleted,
+                    setRecords: (bel.setRecords ?? []).map {
+                        SetRecord(weight: $0.weight, reps: $0.reps, isCompleted: $0.isCompleted)
+                    }
                 )
                 exLog.workoutLog = log
                 log.exerciseLogs.append(exLog)

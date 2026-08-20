@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 struct ProfileView: View {
     @AppStorage("gymflow.userName") private var userName: String = ""
     @AppStorage(AppLanguage.storageKey) private var languageCode = AppLanguage.spanish.rawValue
+    @AppStorage(ActiveWorkoutSession.defaultRestKey) private var defaultRest = 90
     @Environment(\.modelContext) private var modelContext
     @Query private var routines: [Routine]
     @Query private var logs: [WorkoutLog]
@@ -70,6 +71,27 @@ struct ProfileView: View {
                             // Notificaciones
                             SettingsRowView(icon: "bell.fill", tint: Theme.amber, title: "Notificaciones") {
                                 notificationStatusView
+                            }
+                            .accessibilityElement(children: .combine)
+                            Divider().background(Color.white.opacity(0.08))
+
+                            // Descanso por defecto entre series
+                            Menu {
+                                ForEach([45, 60, 90, 120, 150, 180], id: \.self) { seconds in
+                                    Button(action: { defaultRest = seconds }) {
+                                        if defaultRest == seconds {
+                                            Label(restLabel(seconds), systemImage: "checkmark")
+                                        } else {
+                                            Text(restLabel(seconds))
+                                        }
+                                    }
+                                }
+                            } label: {
+                                SettingsRowView(icon: "timer", tint: Theme.green, title: "Descanso entre series") {
+                                    Text(restLabel(defaultRest))
+                                        .scaledFont(size: 13)
+                                        .foregroundColor(Theme.textSecondary)
+                                }
                             }
                             .accessibilityElement(children: .combine)
                             Divider().background(Color.white.opacity(0.08))
@@ -192,6 +214,7 @@ struct ProfileView: View {
 
     // MARK: - Import
 
+    @MainActor
     private func handleImportResult(_ result: Result<URL, Error>) {
         switch result {
         case .success(let url):
@@ -199,6 +222,7 @@ struct ProfileView: View {
             defer { if needsAccess { url.stopAccessingSecurityScopedResource() } }
             do {
                 let migration = try DataExportService.shared.smartImport(from: url, into: modelContext)
+                WidgetSnapshotService.refresh(context: modelContext)
                 let language = AppLanguage.current
                 if language == .english {
                     importResultMessage = "Imported \(migration.importedRoutines) routine(s) and \(migration.importedLogs) workout(s)."
@@ -267,6 +291,13 @@ struct ProfileView: View {
 
     private func totalSetsCompleted() -> Int {
         logs.flatMap { $0.exerciseLogs }.reduce(0) { $0 + $1.setsCompleted }
+    }
+
+    /// "90 s" o "2:30" según si pasa del minuto.
+    private func restLabel(_ seconds: Int) -> String {
+        if seconds < 60 { return "\(seconds) s" }
+        let m = seconds / 60, s = seconds % 60
+        return s == 0 ? "\(m) min" : String(format: "%d:%02d", m, s)
     }
 
     @ViewBuilder

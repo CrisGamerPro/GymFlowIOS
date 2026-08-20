@@ -31,6 +31,7 @@ struct ExerciseInfoSheet: View {
                     VStack(spacing: 20) {
                         animationCard
                         metaRow
+                        historyLink
                         cuesCard
                     }
                     .padding()
@@ -83,6 +84,52 @@ struct ExerciseInfoSheet: View {
                      label: "\(value) \(ExerciseCatalog.displayUnit(unit))",
                      tint: Theme.amber)
         }
+    }
+
+    private var historyLink: some View {
+        NavigationLink(destination: ExerciseHistoryView(exerciseId: exerciseId, storedName: storedName)) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(Theme.green.opacity(0.15))
+                        .frame(width: 34, height: 34)
+                    Image(systemName: "chart.line.uptrend.xyaxis")
+                        .scaledFont(size: 15, weight: .semibold)
+                        .foregroundColor(Theme.green)
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(historyTitle)
+                        .scaledFont(size: 15, weight: .bold)
+                        .foregroundColor(Theme.text)
+                    Text(historySubtitle)
+                        .scaledFont(size: 12)
+                        .foregroundColor(Theme.textSecondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .scaledFont(size: 13, weight: .semibold)
+                    .foregroundColor(Theme.textSecondary)
+                    .accessibilityHidden(true)
+            }
+            .padding(14)
+            .glassCard()
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var historyTitle: String {
+        AppLanguage.current == .english ? "Progress & records" : "Progresión y récords"
+    }
+
+    private var historySubtitle: String {
+        AppLanguage.current == .english
+            ? "Your history for this exercise"
+            : "Tu historial en este ejercicio"
     }
 
     private var cuesCard: some View {

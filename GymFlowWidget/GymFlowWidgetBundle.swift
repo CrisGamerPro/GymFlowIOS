@@ -11,6 +11,7 @@ import SwiftUI
 @main
 struct GymFlowWidgetBundle: WidgetBundle {
     var body: some Widget {
-        GymFlowWidgetLiveActivity()
+        GymFlowTodayWidget()        // Pantalla de inicio
+        GymFlowWidgetLiveActivity() // Pantalla de bloqueo / Dynamic Island
     }
 }

@@ -6,7 +6,8 @@ struct RoutinesView: View {
     @Query(sort: \Routine.createdAt, order: .reverse) private var routines: [Routine]
     @Environment(\.modelContext) private var modelContext
     @State private var routineToEdit: Routine?
-    
+    @State private var showTemplates = false
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -24,15 +25,28 @@ struct RoutinesView: View {
                             .scaledFont(size: 14)
                             .foregroundColor(Theme.textSecondary)
                         
-                        Button(action: { showCreateModal = true }) {
-                            Text("＋ Nueva Rutina")
-                                .scaledFont(size: 16, weight: .bold)
-                                .foregroundColor(.black)
-                                .padding(.horizontal, 24)
-                                .padding(.vertical, 14)
-                                .background(Theme.amber)
-                                .cornerRadius(16)
+                        VStack(spacing: 10) {
+                            Button(action: { showTemplates = true }) {
+                                Text("Ver rutinas listas")
+                                    .scaledFont(size: 16, weight: .bold)
+                                    .foregroundColor(.black)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 14)
+                                    .background(Theme.amber)
+                                    .cornerRadius(16)
+                            }
+
+                            Button(action: { showCreateModal = true }) {
+                                Text("＋ Crear desde cero")
+                                    .scaledFont(size: 16, weight: .bold)
+                                    .foregroundColor(Theme.amber)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 14)
+                                    .background(Theme.amber.opacity(0.15))
+                                    .cornerRadius(16)
+                            }
                         }
+                        .padding(.horizontal, 40)
                         .padding(.top, 20)
                     }
                 } else {
@@ -63,11 +77,23 @@ struct RoutinesView: View {
             }
             .navigationTitle("Mis Rutinas")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: { showTemplates = true }) {
+                        Image(systemName: "square.stack.3d.up.fill")
+                            .foregroundColor(Theme.amber)
+                    }
+                    .accessibilityLabel("Rutinas listas para usar")
+                }
+            }
             .toolbarBackground(Theme.cardBackground, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .sheet(item: $routineToEdit) { routine in
                 RoutineEditorView(routineToEdit: routine)
+            }
+            .sheet(isPresented: $showTemplates) {
+                RoutineTemplatesView()
             }
         }
     }
@@ -84,6 +110,7 @@ struct RoutinesView: View {
             modelContext.delete(routine)
             try? modelContext.save()
         }
+        WidgetSnapshotService.refresh(context: modelContext)
     }
 }
 

@@ -26,8 +26,8 @@ struct ExerciseAnimationView: View {
 
     static func pose(for pattern: MovementPattern, at date: Date, playing: Bool) -> StickPose {
         let frames = pattern.keyframes
-        guard frames.count > 1 else { return frames.first ?? MovementPattern.squatFrames[0] }
-        guard playing else { return frames[0] }
+        guard let first = frames.first else { return Poses.squat[0] }
+        guard frames.count > 1, playing else { return first }
 
         let elapsed = date.timeIntervalSinceReferenceDate
         let progress = (elapsed.truncatingRemainder(dividingBy: pattern.cycleDuration)) / pattern.cycleDuration
